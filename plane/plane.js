@@ -1,7 +1,7 @@
 export class Boeing748 {
     constructor(viewer) {
         this.viewer = viewer;
-        // Updated link to your specific model
+        // Make sure your repo '7478i2' is PUBLIC for this link to work
         this.modelUri = 'https://raw.githack.com/vaibhavbahadur-cpu/7478i2/main/Boeing%20747-8I.glb';
         this.aircraftEntity = null;
     }
@@ -22,7 +22,7 @@ export class Boeing748 {
             }
         });
 
-        // Zoom to plane once it loads
+        // Lock camera to the plane
         this.viewer.trackedEntity = this.aircraftEntity;
     }
 }
