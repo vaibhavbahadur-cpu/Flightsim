@@ -8,32 +8,30 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
         #cesiumContainer { width: 100%; height: 100%; position: absolute; }
-        #navMap { position: fixed; top: 10px; right: 10px; width: 300px; height: 200px; border: 2px solid #0f0; z-index: 10; background: #000; }
         #status { position: fixed; bottom: 10px; left: 10px; color: #0f0; z-index: 20; font-family: monospace; background: rgba(0,0,0,0.5); padding: 5px; }
     </style>
 </head>
 <body>
     <div id="cesiumContainer"></div>
-    <div id="navMap"></div>
-    <div id="status">SYSTEM: INITIALIZING...</div>
+    <div id="status">SYSTEM: CONNECTING...</div>
 
     <script type="module">
         import { FlightWorld } from './cesium.js';
-        import { Boeing748 } from './plane.js';
+        import { Boeing748 } from './plane/plane.js';
 
         const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIwLTQyOWEtYTYwYy1lY2IyYmNlMzNkZTYiLCJpZCI6NDEwODE3LCJpYXQiOjE3NzQ3OTc2NTB9.-Fwn3dLnJIdfvcJj2tiB7UHey2alHBtdRH8hCXcIqJY';
         
         async function start() {
             try {
-                const world = new FlightWorld('cesiumContainer', 'navMap', TOKEN);
+                const world = new FlightWorld('cesiumContainer', TOKEN);
                 const my747 = new Boeing748(world.viewer);
                 
-                // Spawn at KAUS: -97.67, 30.19, 305 meters (1000ft)
+                // Spawn at Austin Bergstrom (KAUS)
                 my747.spawn(-97.67, 30.19, 305);
                 
-                document.getElementById('status').innerText = "SYSTEM: ATX-APPROACH ACTIVE";
+                document.getElementById('status').innerText = "SYSTEM: ONLINE - KAUS APPROACH";
             } catch (e) {
-                document.getElementById('status').innerText = "SYSTEM: CRITICAL FAILURE";
+                document.getElementById('status').innerText = "SYSTEM: ERROR";
                 console.error(e);
             }
         }
