@@ -1,49 +1,33 @@
 export class FlightPhysics {
-    constructor(startLat, startLon, startAlt) {
-        this.latitude = startLat;
-        this.longitude = startLon;
-        this.altitude = startAlt;
-        
-        this.velocity = 103; // Base 200kts
+    constructor(lat, lon, alt) {
+        this.latitude = lat;
+        this.longitude = lon;
+        this.altitude = alt;
+        this.velocity = 100;
         this.heading = 170;
-        this.lastUpdateTime = performance.now();
     }
 
     applyInputs(controls, deltaTime) {
-        // Sensitivity Settings
-        const pitchSensitivity = 40; // Meters per second climb/descent
-        const turnSensitivity = 25;  // Degrees per second turn
-        const rudderSensitivity = 15;
+        if (!deltaTime || deltaTime > 0.1) return;
 
-        // 1. Throttle (Velocity) - Mapping 1-9 to ~150-350 knots
-        // Velocity = throttle * 20 (roughly)
-        this.velocity = controls.throttle * 22; 
+        const speedMult = 22; 
+        const climbRate = 40; 
+        const turnRate = 30;
 
-        // 2. Elevator (Up/Down Arrows)
-        if (controls.keys.arrowup) this.altitude -= pitchSensitivity * deltaTime; // Standard Sim: Up is Pitch Down
-        if (controls.keys.arrowdown) this.altitude += pitchSensitivity * deltaTime; // Down is Pitch Up
+        // Update Velocity based on 1-9 throttle
+        this.velocity = controls.throttle * speedMult;
 
-        // 3. Ailerons (Left/Right Arrows)
-        if (controls.keys.arrowleft) this.heading -= turnSensitivity * deltaTime;
-        if (controls.keys.arrowright) this.heading += turnSensitivity * deltaTime;
+        // Pitch (Elevators)
+        if (controls.keys.ArrowUp) this.altitude -= climbRate * deltaTime;
+        if (controls.keys.ArrowDown) this.altitude += climbRate * deltaTime;
 
-        // 4. Rudder (A/D Keys)
-        if (controls.keys.a) this.heading -= rudderSensitivity * deltaTime;
-        if (controls.keys.d) this.heading += rudderSensitivity * deltaTime;
+        // Roll/Yaw (Ailerons & Rudder)
+        if (controls.keys.ArrowLeft || controls.keys.KeyA) this.heading -= turnRate * deltaTime;
+        if (controls.keys.ArrowRight || controls.keys.KeyD) this.heading += turnRate * deltaTime;
     }
 
     update() {
-        const currentTime = performance.now();
-        const deltaTime = (currentTime - this.lastUpdateTime) / 1000;
-        this.lastUpdateTime = currentTime;
-
-        const distance = this.velocity * deltaTime;
-        const metersPerDegreeLat = 111000;
-        const metersPerDegreeLon = metersPerDegreeLat * Math.cos(window.Cesium.Math.toRadians(this.latitude));
-
-        this.latitude += (distance * Math.cos(window.Cesium.Math.toRadians(this.heading))) / metersPerDegreeLat;
-        this.longitude += (distance * Math.sin(window.Cesium.Math.toRadians(this.heading))) / metersPerDegreeLon;
-
+        // ... (The Lat/Lon math you already have goes here)
         return { 
             latitude: this.latitude, 
             longitude: this.longitude, 
