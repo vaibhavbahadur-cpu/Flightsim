@@ -5,16 +5,33 @@ export class FlightCamera {
 
     setFollowView(entity) {
         if (!entity) return;
-        
+
+        // 1. Lock the selection to the plane
         this.viewer.trackedEntity = entity;
-        
-        // Using window.Cesium to ensure the library is found
+
+        // 2. Define the offset: 
+        // Heading: 0 (Directly Behind)
+        // Pitch: -15 degrees (Tilted slightly down to see the top of the wings)
+        // Range: 100 meters (Distance from the tail)
         const offset = new window.Cesium.HeadingPitchRange(
-            window.Cesium.Math.toRadians(0),   // Behind
-            window.Cesium.Math.toRadians(-15), // Tilted up
-            150                                // Distance
+            window.Cesium.Math.toRadians(0), 
+            window.Cesium.Math.toRadians(-15), 
+            100 
         );
 
-        this.viewer.zoomTo(entity, offset);
+        // 3. Force the camera to look at the plane using its internal transform
+        // This ensures zooming in goes to the plane, not the Earth's core
+        this.viewer.zoomTo(entity, offset).then(() => {
+            // This 'then' ensures it only locks AFTER the camera arrives
+            this.viewer.camera.lookAtTransform(
+                entity.computeModelMatrix(window.Cesium.JulianDate.now()), 
+                offset
+            );
+        });
+    }
+
+    // Call this if you want to fly around freely again
+    unlock() {
+        this.viewer.camera.lookAtTransform(window.Cesium.Matrix4.IDENTITY);
     }
 }
