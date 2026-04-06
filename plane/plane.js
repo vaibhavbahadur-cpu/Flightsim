@@ -1,13 +1,12 @@
 export class Boeing748 {
     constructor(viewer) {
         this.viewer = viewer;
-        // This link points directly to your GitHub Pages hosted file
-        this.modelUri = 'https://vaibhavbahadur-cpu.github.io/7478i2/Boeing%20747-8I.glb';
+        // Using your updated Githack link
+        this.modelUri = 'https://raw.githack.com/vaibhavbahadur-cpu/7478/main/Boeing%20747-8I.glb';
         this.aircraftEntity = null;
     }
 
     spawn(lon, lat, alt) {
-        console.log("Attempting to load 747 from:", this.modelUri);
         const position = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
         const hpr = new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(170), 0, 0);
         const orientation = Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
@@ -23,7 +22,8 @@ export class Boeing748 {
             }
         });
 
-        // Track the plane
+        // Attach camera to the aircraft
         this.viewer.trackedEntity = this.aircraftEntity;
+        console.log("747-8 Model Loaded Successfully from Githack.");
     }
 }
