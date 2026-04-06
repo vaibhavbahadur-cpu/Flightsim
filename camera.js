@@ -1,7 +1,7 @@
 export class FlightCamera {
     constructor(viewer) {
         this.viewer = viewer;
-        // 180 = Behind Tail, -15 = Tilted down, 150 = Distance
+        // 180 = Tail, -15 = Tilted Up, 150 = Distance
         this.offset = new window.Cesium.HeadingPitchRange(
             window.Cesium.Math.toRadians(180), 
             window.Cesium.Math.toRadians(-15), 
@@ -12,12 +12,14 @@ export class FlightCamera {
     initializeFollow(entity) {
         if (!entity) return;
 
-        // The Secret Sauce: Lock the camera's universe to the plane's position
+        // Get the plane's current position/rotation matrix
         const transform = entity.computeModelMatrix(window.Cesium.JulianDate.now());
         
         if (transform) {
+            // This pins the camera to the plane's 'universe'
             this.viewer.camera.lookAtTransform(transform, this.offset);
-            // This line allows the mouse to still orbit while staying "glued"
+            
+            // This allows the mouse to still orbit the center
             this.viewer.trackedEntity = entity; 
         }
     }
