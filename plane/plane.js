@@ -1,12 +1,13 @@
 export class Boeing748 {
     constructor(viewer) {
         this.viewer = viewer;
-        // Make sure your repo '7478i2' is set to PUBLIC in GitHub settings
-        this.modelUri = 'https://raw.githack.com/vaibhavbahadur-cpu/7478i2/main/Boeing%20747-8I.glb';
+        // This link points directly to your GitHub Pages hosted file
+        this.modelUri = 'https://vaibhavbahadur-cpu.github.io/7478i2/Boeing%20747-8I.glb';
         this.aircraftEntity = null;
     }
 
     spawn(lon, lat, alt) {
+        console.log("Attempting to load 747 from:", this.modelUri);
         const position = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
         const hpr = new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(170), 0, 0);
         const orientation = Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
