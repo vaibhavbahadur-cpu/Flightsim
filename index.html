@@ -13,27 +13,39 @@
 <body>
     <div id="cesiumContainer"></div>
     <script type="module">
-        // 2. WAIT FOR WINDOW TO LOAD BEFORE STARTING
-        window.onload = async () => {
-            const { FlightWorld } = await import('./cesium.js');
-            const { Boeing748 } = await import('./plane/plane.js');
-            const { FlightCamera } = await import('./camera.js');
+        import { FlightWorld } from './cesium.js';
+        import { Boeing748 } from './plane/plane.js';
+        import { FlightCamera } from './camera.js';
 
-            const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIwLTQyOWEtYTYwYy1lY2IyYmNlMzNkZTYiLCJpZCI6NDEwODE3LCJpYXQiOjE3NzQ3OTc2NTB9.-Fwn3dLnJIdfvcJj2tiB7UHey2alHBtdRH8hCXcIqJY';
-            
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIwLTQyOWEtYTYwYy1lY2IyYmNlMzNkZTYiLCJpZCI6NDEwODE3LCJpYXQiOjE3NzQ3OTc2NTB9.-Fwn3dLnJIdfvcJj2tiB7UHey2alHBtdRH8hCXcIqJY';
+        
+        // This function waits for the Cesium library to be fully ready
+        async function start() {
+            if (typeof Cesium === 'undefined') {
+                setTimeout(start, 100); // Try again in 100ms if not ready
+                return;
+            }
+
             try {
                 const world = new FlightWorld('cesiumContainer', TOKEN);
                 const my747 = new Boeing748(world.viewer);
                 const camSystem = new FlightCamera(world.viewer);
                 
                 my747.spawn(-97.67, 30.19, 305);
-                camSystem.setFollowView(my747.aircraftEntity);
                 
-                console.log("Systems Check: OK.");
+                // Wait a split second for model to init, then lock camera
+                setTimeout(() => {
+                    camSystem.setFollowView(my747.aircraftEntity);
+                }, 500);
+                
+                console.log("Systems Online.");
             } catch (e) {
-                console.error("Camera System Failure:", e);
+                console.error("Initialization Error:", e);
             }
-        };
+        }
+
+        window.onload = start;
     </script>
 </body>
 </html>
+
