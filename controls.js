@@ -1,28 +1,32 @@
 export class FlightControls {
     constructor() {
         this.keys = {
-            arrowup: false, arrowdown: false, // Elevator (Pitch)
-            arrowleft: false, arrowright: false, // Ailerons (Roll)
-            a: false, d: false, // Rudder (Yaw)
-            throttle: 5 // Default to 50% power (1-9)
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false,
+            KeyA: false,
+            KeyD: false
         };
+        this.throttle = 5;
 
-        window.addEventListener('keydown', (e) => this.handleKey(e, true));
-        window.addEventListener('keyup', (e) => this.handleKey(e, false));
-    }
+        window.addEventListener('keydown', (e) => {
+            // Handle Throttle 1-9
+            if (e.key >= '1' && e.key <= '9') {
+                this.throttle = parseInt(e.key);
+                console.log("Throttle Set:", this.throttle);
+            }
+            // Handle Movement
+            if (e.code in this.keys) {
+                this.keys[e.code] = true;
+                e.preventDefault(); // Stops the webpage from scrolling
+            }
+        });
 
-    handleKey(e, isPressed) {
-        const key = e.key.toLowerCase();
-
-        // 1. Throttle Logic (1-9)
-        if (isPressed && key >= '1' && key <= '9') {
-            this.throttle = parseInt(key);
-            console.log(`Throttle: ${this.throttle}0%`);
-        }
-
-        // 2. Control Surfaces
-        if (this.keys.hasOwnProperty(key)) {
-            this.keys[key] = isPressed;
-        }
+        window.addEventListener('keyup', (e) => {
+            if (e.code in this.keys) {
+                this.keys[e.code] = false;
+            }
+        });
     }
 }
