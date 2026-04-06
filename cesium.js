@@ -1,7 +1,6 @@
 export class FlightWorld {
     constructor(containerId, token) {
         Cesium.Ion.defaultAccessToken = token;
-
         this.viewer = new Cesium.Viewer(containerId, {
             terrain: Cesium.Terrain.fromWorldTerrain(),
             selectionIndicator: false,
@@ -12,15 +11,14 @@ export class FlightWorld {
             timeline: false
         });
 
-        // Drop camera from space to Austin
-        this.viewer.camera.flyTo({
-            destination : Cesium.Cartesian3.fromDegrees(-97.67, 30.19, 1500),
-            orientation : {
-                heading : Cesium.Math.toRadians(0.0),
-                pitch : Cesium.Math.toRadians(-35.0),
-                roll : 0.0
-            },
-            duration: 4
+        // Instant camera move to Austin
+        this.viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromDegrees(-97.67, 30.19, 2000),
+            orientation: {
+                heading: Cesium.Math.toRadians(0),
+                pitch: Cesium.Math.toRadians(-30),
+                roll: 0
+            }
         });
     }
 }
