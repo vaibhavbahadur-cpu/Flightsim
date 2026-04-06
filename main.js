@@ -1,41 +1,24 @@
-import { FlightWorld } from './cesium.js';
-import { Boeing748 } from './plane/plane.js';
-import { FlightCamera } from './camera.js';
-import { FlightPhysics } from './physics.js';
+function flightLoop() {
+    const data = physics.update();
+    
+    // Update Position
+    const position = window.Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude, data.altitude);
+    my747.aircraftEntity.position = position;
 
-const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIwLTQyOWEtYTYwYy1lY2IyYmNlMzNkZTYiLCJpZCI6NDEwODE3LCJpYXQiOjE3NzQ3OTc2NTB9.-Fwn3dLnJIdfvcJj2tiB7UHey2alHBtdRH8hCXcIqJY';
+    // ROTATION FIX: Rotate 90 degrees CCW to align nose with travel direction
+    const visualHeading = data.heading - 90; 
+    const hpr = new window.Cesium.HeadingPitchRoll(
+        window.Cesium.Math.toRadians(visualHeading), 
+        0, 
+        0
+    );
+    my747.aircraftEntity.orientation = window.Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
 
-export async function startSimulation() {
-    if (typeof window.Cesium === 'undefined') {
-        setTimeout(startSimulation, 100);
-        return;
+    // JITTER FIX: Tell the camera to follow the model's exact matrix
+    const matrix = my747.aircraftEntity.computeModelMatrix(window.Cesium.JulianDate.now());
+    if (matrix) {
+        camSystem.update(matrix); // We will update camera.js to handle this matrix
     }
 
-    const world = new FlightWorld('cesiumContainer', TOKEN);
-    const my747 = new Boeing748(world.viewer);
-    const camSystem = new FlightCamera(world.viewer);
-    
-    // Start at 1,000ft, 200 kts (103 m/s)
-    const physics = new FlightPhysics(30.19, -97.67, 305);
-    
-    my747.spawn(physics.longitude, physics.latitude, physics.altitude);
-
-    function flightLoop() {
-        const data = physics.update();
-        
-        // Update Position
-        const position = window.Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude, data.altitude);
-        my747.aircraftEntity.position = position;
-
-        // Update Orientation (Nose direction)
-        const hpr = new window.Cesium.HeadingPitchRoll(window.Cesium.Math.toRadians(data.heading), 0, 0);
-        my747.aircraftEntity.orientation = window.Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
-
-        // Update Camera
-        camSystem.setFollowView(my747.aircraftEntity);
-
-        requestAnimationFrame(flightLoop);
-    }
-
-    setTimeout(flightLoop, 2000);
+    requestAnimationFrame(flightLoop);
 }
