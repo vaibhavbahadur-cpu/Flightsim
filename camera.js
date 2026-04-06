@@ -14,7 +14,7 @@ export class FlightCamera {
         // Pitch: -15 degrees (Tilted slightly down to see the top of the wings)
         // Range: 100 meters (Distance from the tail)
         const offset = new window.Cesium.HeadingPitchRange(
-            window.Cesium.Math.toRadians(0), 
+            window.Cesium.Math.toRadians(90), 
             window.Cesium.Math.toRadians(-15), 
             100 
         );
