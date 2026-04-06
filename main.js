@@ -8,58 +8,36 @@ const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIw
 
 export async function startSimulation() {
     if (typeof window.Cesium === 'undefined') {
-        setTimeout(startSimulation, 100);
+        setTimeout(startSimulation, 500);
         return;
     }
 
-    // 1. Initialize Systems
     const world = new FlightWorld('cesiumContainer', TOKEN);
     const my747 = new Boeing748(world.viewer);
     const camSystem = new FlightCamera(world.viewer);
     const controls = new FlightControls();
-    
-    // Initial State: Austin, TX @ 1,000ft (305m)
     const physics = new FlightPhysics(30.19, -97.67, 305);
     
-    // 2. Spawn the 747-8
     my747.spawn(physics.longitude, physics.latitude, physics.altitude);
 
     let cameraInitialized = false;
-    let lastFrameTime = performance.now();
 
-    // 3. The Flight Loop
-    function flightLoop() {
+    function flightLoop(now) {
         if (my747.aircraftEntity) {
-            // Calculate Delta Time (Time since last frame)
-            const now = performance.now();
-            const deltaTime = (now - lastFrameTime) / 1000; 
-            lastFrameTime = now;
-
-            // Step 1: Apply User Inputs (Arrows, 1-9, A/D)
-            physics.applyInputs(controls, deltaTime);
-            
-            // Step 2: Update Physics Position
+            // Update systems
+            physics.applyInputs(controls, 0.016); // Standard 60fps delta
             const data = physics.update();
             
-            // Step 3: Move the 3D Model
-            const position = window.Cesium.Cartesian3.fromDegrees(
-                data.longitude, 
-                data.latitude, 
-                data.altitude
-            );
-            my747.aircraftEntity.position = position;
+            // Move Model
+            const pos = window.Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude, data.altitude);
+            my747.aircraftEntity.position = pos;
 
-            // Step 4: Rotate the Model (Align Nose + Apply visual Pitch/Roll)
-            // We rotate -90 for the model offset, then add physics heading
-            const visualHeading = data.heading - 90; 
-            const hpr = new window.Cesium.HeadingPitchRoll(
-                window.Cesium.Math.toRadians(visualHeading), 
-                window.Cesium.Math.toRadians(0), // We can add data.pitch here later
-                window.Cesium.Math.toRadians(0)  // We can add data.roll here later
-            );
-            my747.aircraftEntity.orientation = window.Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
+            // Rotate Model (-90 offset for nose alignment)
+            const vHeading = data.heading - 90; 
+            const hpr = new window.Cesium.HeadingPitchRoll(window.Cesium.Math.toRadians(vHeading), 0, 0);
+            my747.aircraftEntity.orientation = window.Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
 
-            // Step 5: Initialize Camera (Lock to tail once, then allow orbit)
+            // Lock Camera once
             if (!cameraInitialized) {
                 const matrix = my747.aircraftEntity.computeModelMatrix(window.Cesium.JulianDate.now());
                 if (matrix && !window.Cesium.Matrix4.equals(matrix, window.Cesium.Matrix4.IDENTITY)) {
@@ -68,10 +46,10 @@ export async function startSimulation() {
                 }
             }
         }
-        
         requestAnimationFrame(flightLoop);
     }
 
-    // Start loop after assets settle
-    setTimeout(flightLoop, 2000);
+    setTimeout(() => {
+        requestAnimationFrame(flightLoop);
+    }, 3000);
 }
