@@ -1,25 +1,56 @@
-async function start() {
-    if (typeof Cesium === 'undefined') {
-        setTimeout(start, 100);
-        return;
-    }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>B748 Flight Sim</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+        #cesiumContainer { width: 100%; height: 100%; position: absolute; }
+    </style>
+</head>
+<body>
+    <div id="cesiumContainer"></div>
 
-    try {
-        const world = new FlightWorld('cesiumContainer', TOKEN);
-        const my747 = new Boeing748(world.viewer);
-        const camSystem = new FlightCamera(world.viewer);
+    <script type="module">
+        import { FlightWorld } from './cesium.js';
+        import { Boeing748 } from './plane/plane.js';
+        import { FlightCamera } from './camera.js';
+
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIwLTQyOWEtYTYwYy1lY2IyYmNlMzNkZTYiLCJpZCI6NDEwODE3LCJpYXQiOjE3NzQ3OTc2NTB9.-Fwn3dLnJIdfvcJj2tiB7UHey2alHBtdRH8hCXcIqJY';
         
-        my747.spawn(-97.67, 30.19, 305);
-        
-        // Give the GLB model 1 second to actually "exist" in the engine
-        setTimeout(() => {
-            if (my747.aircraftEntity) {
-                camSystem.setFollowView(my747.aircraftEntity);
-                console.log("Navigation: Locked to Tail.");
+        async function start() {
+            // Check if the Cesium library from the <head> is ready
+            if (typeof window.Cesium === 'undefined') {
+                console.log("Waiting for Cesium engine...");
+                setTimeout(start, 100);
+                return;
             }
-        }, 1000);
-        
-    } catch (e) {
-        console.error("Initialization Error:", e);
-    }
-}
+
+            try {
+                const world = new FlightWorld('cesiumContainer', TOKEN);
+                const my747 = new Boeing748(world.viewer);
+                const camSystem = new FlightCamera(world.viewer);
+                
+                // Spawn at Austin
+                my747.spawn(-97.67, 30.19, 305);
+                
+                // Lock the Chase Cam after the model loads
+                setTimeout(() => {
+                    if (my747.aircraftEntity) {
+                        camSystem.setFollowView(my747.aircraftEntity);
+                        console.log("Navigation: Locked to Tail.");
+                    }
+                }, 1000);
+                
+            } catch (e) {
+                console.error("Initialization Error:", e);
+            }
+        }
+
+        // Run the start function once the window finishes loading
+        window.onload = start;
+    </script>
+</body>
+</html>
