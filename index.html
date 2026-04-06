@@ -2,19 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>B748 ATX Simulator</title>
+    <title>B748 Flight Sim</title>
     <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
     <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
     <style>
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
         #cesiumContainer { width: 100%; height: 100%; position: absolute; }
-        #status { position: fixed; bottom: 10px; left: 10px; color: #0f0; z-index: 20; font-family: monospace; background: rgba(0,0,0,0.5); padding: 5px; }
     </style>
 </head>
 <body>
     <div id="cesiumContainer"></div>
-    <div id="status">SYSTEM: CONNECTING...</div>
-
     <script type="module">
         import { FlightWorld } from './cesium.js';
         import { Boeing748 } from './plane/plane.js';
@@ -26,13 +23,10 @@
                 const world = new FlightWorld('cesiumContainer', TOKEN);
                 const my747 = new Boeing748(world.viewer);
                 
-                // Spawn at Austin Bergstrom (KAUS)
+                // Spawn at KAUS (Austin) at 1,000ft AGL
                 my747.spawn(-97.67, 30.19, 305);
-                
-                document.getElementById('status').innerText = "SYSTEM: ONLINE - KAUS APPROACH";
             } catch (e) {
-                document.getElementById('status').innerText = "SYSTEM: ERROR";
-                console.error(e);
+                console.error("Launch Failed:", e);
             }
         }
         start();
