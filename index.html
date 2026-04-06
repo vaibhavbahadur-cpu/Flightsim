@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>B748 Prototype</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+        #cesiumContainer { width: 100%; height: 100%; position: absolute; }
+        #navMap { position: fixed; top: 10px; right: 10px; width: 300px; height: 200px; border: 2px solid #0f0; z-index: 10; background: #000; }
+    </style>
+</head>
+<body>
+    <div id="cesiumContainer"></div>
+    <div id="navMap"></div>
+
+    <script type="module">
+        // This line connects to the 'cesium.js' file you already made
+        import { FlightWorld } from './cesium.js';
+
+        const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIwLTQyOWEtYTYwYy1lY2IyYmNlMzNkZTYiLCJpZCI6NDEwODE3LCJpYXQiOjE3NzQ3OTc2NTB9.-Fwn3dLnJIdfvcJj2tiB7UHey2alHBtdRH8hCXcIqJY';
+        
+        try {
+            const world = new FlightWorld('cesiumContainer', 'navMap', TOKEN);
+            console.log("System Online.");
+        } catch (e) {
+            console.error("Connection failed: ", e);
+        }
+    </script>
+</body>
+</html>
