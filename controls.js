@@ -11,20 +11,15 @@ export class FlightControls {
         this.throttle = 5;
 
         window.addEventListener('keydown', (e) => {
-            // Handle Throttle 1-9
-            if (e.key >= '1' && e.key <= '9') {
-                this.throttle = parseInt(e.key);
-                console.log("Throttle Set:", this.throttle);
-            }
-            // Handle Movement
-            if (e.code in this.keys) {
+            if (e.key >= '1' && e.key <= '9') this.throttle = parseInt(e.key);
+            if (this.keys.hasOwnProperty(e.code)) {
                 this.keys[e.code] = true;
-                e.preventDefault(); // Stops the webpage from scrolling
+                e.preventDefault();
             }
         });
 
         window.addEventListener('keyup', (e) => {
-            if (e.code in this.keys) {
+            if (this.keys.hasOwnProperty(e.code)) {
                 this.keys[e.code] = false;
             }
         });
