@@ -7,71 +7,41 @@ export class FlightPhysics {
         this.heading = 170;  
         this.pitch = 0;      
         this.roll = 0;       
+        this.groundHeight = 0; // New: Dynamic floor
         
-        // --- ROTATIONAL MOMENTUM ---
-        this.pitchVelocity = 0; // Degrees per second
+        this.pitchVelocity = 0;
         this.rollVelocity = 0;
         this.yawVelocity = 0;
-
         this.lastUpdateTime = performance.now();
     }
 
     applyInputs(controls, deltaTime) {
         if (!deltaTime || deltaTime > 0.1) return;
 
-        // 1. Throttle Inertia
-        const targetSpeed = (controls.throttle || 5) * 22;
-        this.airspeed += (targetSpeed - this.airspeed) * deltaTime * 0.3;
+        // Constants (Using your "Sweet Spot" settings)
+        const controlAuthority = 35.0; 
+        const damping = 1.8;           
+        const responsiveness = 2.5;    
 
-        // 2. HEAVY JET PHYSICS CONSTANTS
-        const controlAuthority = 35.0; // How much "torque" the surfaces have
-        const damping = 1.8;           // Air resistance (prevents the Su-35 "whip")
-        const responsiveness = 2.5;    // Overall "weight" (Lower = Heavier)
+        // Input Logic (Inertia)
+        let pIn = controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0);
+        let rIn = controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0);
+        let yIn = controls.keys.KeyA ? -controlAuthority * 0.5 : (controls.keys.KeyD ? controlAuthority * 0.5 : 0);
 
-        // --- PITCH MOMENTUM (Elevators) ---
-        let pitchInput = 0;
-        if (controls.keys.ArrowUp) pitchInput = -controlAuthority;
-        if (controls.keys.ArrowDown) pitchInput = controlAuthority;
-        
-        // Acceleration = Force - Damping
-        this.pitchVelocity += (pitchInput - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
+        this.pitchVelocity += (pIn - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
+        this.rollVelocity += (rIn - (this.rollVelocity * damping)) * deltaTime * responsiveness;
+        this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
 
-        // --- ROLL MOMENTUM (Ailerons) ---
-        let rollInput = 0;
-        if (controls.keys.ArrowLeft) rollInput = -controlAuthority * 1.5;
-        if (controls.keys.ArrowRight) rollInput = controlAuthority * 1.5;
-        
-        this.rollVelocity += (rollInput - (this.rollVelocity * damping)) * deltaTime * responsiveness;
-
-        // --- YAW MOMENTUM (Rudder) ---
-        let yawInput = 0;
-        if (controls.keys.KeyA) yawInput = -controlAuthority * 0.5;
-        if (controls.keys.KeyD) yawInput = controlAuthority * 0.5;
-        
-        this.yawVelocity += (yawInput - (this.yawVelocity * damping)) * deltaTime * responsiveness;
-
-        // --- APPLY ROTATIONS TO LOCAL FRAME ---
         const r = window.Cesium.Math.toRadians(this.roll);
-        const cosR = Math.cos(r);
-        const sinR = Math.sin(r);
-
-        // Movement is now derived from VELOCITY, not direct input
-        this.pitch += (this.pitchVelocity * cosR) * deltaTime;
-        this.heading += (this.pitchVelocity * sinR) * deltaTime;
-
-        this.heading += (this.yawVelocity * cosR) * deltaTime;
-        this.pitch -= (this.yawVelocity * sinR) * deltaTime;
-
+        this.pitch += (this.pitchVelocity * Math.cos(r)) * deltaTime;
+        this.heading += (this.pitchVelocity * Math.sin(r)) * deltaTime;
+        this.heading += (this.yawVelocity * Math.cos(r)) * deltaTime;
+        this.pitch -= (this.yawVelocity * Math.sin(r)) * deltaTime;
         this.roll += this.rollVelocity * deltaTime;
 
-        // --- STABILITY & WEIGHT ---
-        const weightDrop = 1.5; 
-        const liftBalanceSpeed = 110; 
-        const liftEffect = (this.airspeed / liftBalanceSpeed) * 1.8;
-        const bankDrop = (1 - Math.cos(r)) * 8;
-
-        this.pitch -= (weightDrop + bankDrop) * deltaTime;
-        this.pitch += (liftEffect * Math.cos(r)) * deltaTime;
+        // Lift & Weight
+        this.pitch -= (1.5 + (1 - Math.cos(r)) * 8) * deltaTime;
+        this.pitch += ((this.airspeed / 110) * 1.8 * Math.cos(r)) * deltaTime;
     }
 
     update() {
@@ -83,12 +53,22 @@ export class FlightPhysics {
         const p = window.Cesium.Math.toRadians(this.pitch);
         const h = window.Cesium.Math.toRadians(this.heading);
 
-        // Vector Velocity Calculation
+        const vz = this.airspeed * Math.sin(p);
+        
+        // --- DYNAMIC COLLISION ---
+        // We compare current altitude to the terrain height sampled from Cesium
+        if (this.altitude <= this.groundHeight && vz < 0) {
+            this.altitude = this.groundHeight;
+            this.pitch = 0;
+            this.pitchVelocity = 0;
+            this.vs = 0;
+        } else {
+            this.altitude += vz * frameTime;
+            this.vs = vz;
+        }
+
         const vx = this.airspeed * Math.cos(p) * Math.cos(h);
         const vy = this.airspeed * Math.cos(p) * Math.sin(h);
-        const vz = this.airspeed * Math.sin(p);
-
-        this.altitude += vz * frameTime;
 
         const metersPerDegLat = 111000;
         const radLat = window.Cesium.Math.toRadians(this.latitude);
@@ -97,17 +77,11 @@ export class FlightPhysics {
         this.latitude += (vx * frameTime) / metersPerDegLat;
         this.longitude += (vy * frameTime) / metersPerDegLon;
 
-        this.heading = (this.heading + 360) % 360;
-        if (this.roll > 180) this.roll -= 360;
-        if (this.roll < -180) this.roll += 360;
-
         return {
-            latitude: this.latitude,
-            longitude: this.longitude,
-            altitude: this.altitude,
-            heading: this.heading,
-            pitch: this.pitch,
-            roll: this.roll
+            latitude: this.latitude, longitude: this.longitude, altitude: this.altitude,
+            heading: this.heading, pitch: this.pitch, roll: this.roll,
+            airspeed: this.airspeed, vs: this.vs,
+            agl: this.altitude - this.groundHeight // Altitude Above Ground Level
         };
     }
 }
