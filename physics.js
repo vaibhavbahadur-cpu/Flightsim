@@ -7,64 +7,71 @@ export class FlightPhysics {
         this.heading = 170;  
         this.pitch = 0;      
         this.roll = 0;       
+        
+        // --- ROTATIONAL MOMENTUM ---
+        this.pitchVelocity = 0; // Degrees per second
+        this.rollVelocity = 0;
+        this.yawVelocity = 0;
+
         this.lastUpdateTime = performance.now();
     }
 
     applyInputs(controls, deltaTime) {
         if (!deltaTime || deltaTime > 0.1) return;
 
-        // 1. Throttle (Airspeed) - Gradual spooling
+        // 1. Throttle Inertia
         const targetSpeed = (controls.throttle || 5) * 22;
-        this.airspeed += (targetSpeed - this.airspeed) * deltaTime * 0.4;
+        this.airspeed += (targetSpeed - this.airspeed) * deltaTime * 0.3;
 
-        // 2. Control Authority
-        const pitchPower = 50; 
-        const rollPower = 70;
-        const yawPower = 45; 
+        // 2. HEAVY JET PHYSICS CONSTANTS
+        const controlAuthority = 15.0; // How much "torque" the surfaces have
+        const damping = 2.5;           // Air resistance (prevents the Su-35 "whip")
+        const responsiveness = 0.8;    // Overall "weight" (Lower = Heavier)
 
+        // --- PITCH MOMENTUM (Elevators) ---
+        let pitchInput = 0;
+        if (controls.keys.ArrowUp) pitchInput = -controlAuthority;
+        if (controls.keys.ArrowDown) pitchInput = controlAuthority;
+        
+        // Acceleration = Force - Damping
+        this.pitchVelocity += (pitchInput - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
+
+        // --- ROLL MOMENTUM (Ailerons) ---
+        let rollInput = 0;
+        if (controls.keys.ArrowLeft) rollInput = -controlAuthority * 1.5;
+        if (controls.keys.ArrowRight) rollInput = controlAuthority * 1.5;
+        
+        this.rollVelocity += (rollInput - (this.rollVelocity * damping)) * deltaTime * responsiveness;
+
+        // --- YAW MOMENTUM (Rudder) ---
+        let yawInput = 0;
+        if (controls.keys.KeyA) yawInput = -controlAuthority * 0.5;
+        if (controls.keys.KeyD) yawInput = controlAuthority * 0.5;
+        
+        this.yawVelocity += (yawInput - (this.yawVelocity * damping)) * deltaTime * responsiveness;
+
+        // --- APPLY ROTATIONS TO LOCAL FRAME ---
         const r = window.Cesium.Math.toRadians(this.roll);
         const cosR = Math.cos(r);
         const sinR = Math.sin(r);
 
-        // A. ELEVATORS (Up/Down Arrows)
-        let elevatorInput = 0;
-        if (controls.keys.ArrowUp) elevatorInput = -pitchPower;
-        if (controls.keys.ArrowDown) elevatorInput = pitchPower;
-        
-        this.pitch += (elevatorInput * cosR) * deltaTime;
-        this.heading += (elevatorInput * sinR) * deltaTime;
+        // Movement is now derived from VELOCITY, not direct input
+        this.pitch += (this.pitchVelocity * cosR) * deltaTime;
+        this.heading += (this.pitchVelocity * sinR) * deltaTime;
 
-        // B. RUDDER (A / D Keys)
-        let rudderInput = 0;
-        if (controls.keys.KeyA) rudderInput = -yawPower;
-        if (controls.keys.KeyD) rudderInput = yawPower;
+        this.heading += (this.yawVelocity * cosR) * deltaTime;
+        this.pitch -= (this.yawVelocity * sinR) * deltaTime;
 
-        this.heading += (rudderInput * cosR) * deltaTime;
-        this.pitch -= (rudderInput * sinR) * deltaTime; 
+        this.roll += this.rollVelocity * deltaTime;
 
-        // --- STABILITY & WEIGHT MATH ---
-        
-        // 1. Natural Nose-Down Tendency (Weight of the 747)
-        // We want the nose to drop about 2 degrees per second naturally.
-        const weightDrop = 2.0; 
-        this.pitch -= weightDrop * deltaTime;
-
-        // 2. Speed-Dependent Lift
-        // At cruise speed (approx 110 m/s), the lift should balance the weight.
-        // If we go faster, we climb. If slower, we sink.
+        // --- STABILITY & WEIGHT ---
+        const weightDrop = 1.5; 
         const liftBalanceSpeed = 110; 
-        const liftEffect = (this.airspeed / liftBalanceSpeed) * 2.2;
-        
-        // Apply lift only to the vertical component of the wings
+        const liftEffect = (this.airspeed / liftBalanceSpeed) * 1.8;
+        const bankDrop = (1 - Math.cos(r)) * 8;
+
+        this.pitch -= (weightDrop + bankDrop) * deltaTime;
         this.pitch += (liftEffect * Math.cos(r)) * deltaTime;
-
-        // 3. Roll-Induced Sink (The "Bank-to-Turn" Drop)
-        const bankDrop = (1 - Math.cos(r)) * 10;
-        this.pitch -= bankDrop * deltaTime;
-
-        // D. AILERONS (Left/Right Arrows)
-        if (controls.keys.ArrowLeft) this.roll -= rollPower * deltaTime;
-        if (controls.keys.ArrowRight) this.roll += rollPower * deltaTime;
     }
 
     update() {
@@ -76,7 +83,7 @@ export class FlightPhysics {
         const p = window.Cesium.Math.toRadians(this.pitch);
         const h = window.Cesium.Math.toRadians(this.heading);
 
-        // Global Velocity Vectors
+        // Vector Velocity Calculation
         const vx = this.airspeed * Math.cos(p) * Math.cos(h);
         const vy = this.airspeed * Math.cos(p) * Math.sin(h);
         const vz = this.airspeed * Math.sin(p);
@@ -90,7 +97,6 @@ export class FlightPhysics {
         this.latitude += (vx * frameTime) / metersPerDegLat;
         this.longitude += (vy * frameTime) / metersPerDegLon;
 
-        // Angles normalization
         this.heading = (this.heading + 360) % 360;
         if (this.roll > 180) this.roll -= 360;
         if (this.roll < -180) this.roll += 360;
