@@ -27,18 +27,15 @@ export async function startSimulation() {
 
     function flightLoop(now) {
         if (my747.aircraftEntity) {
-            // 1. Dynamic Terrain Sampling
             const carto = window.Cesium.Cartographic.fromDegrees(physics.longitude, physics.latitude);
             const height = world.viewer.scene.globe.getHeight(carto);
             if (height !== undefined) physics.groundHeight = height;
 
-            // 2. Physics & Controls
             const deltaTime = (now - lastFrameTime) / 1000;
             lastFrameTime = now;
             physics.applyInputs(controls, deltaTime);
             const data = physics.update();
             
-            // 3. Visual Updates
             const pos = window.Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude, data.altitude);
             my747.aircraftEntity.position = pos;
 
@@ -49,7 +46,6 @@ export async function startSimulation() {
             );
             my747.aircraftEntity.orientation = window.Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
 
-            // 4. HUD & Camera
             telemetry.update(data, controls);
             if (!cameraInitialized) {
                 camSystem.initializeFollow(my747.aircraftEntity);
