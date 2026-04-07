@@ -7,23 +7,26 @@ export class FlightPhysics {
         this.heading = 170;  
         this.pitch = 0;      
         this.roll = 0;       
-        this.groundHeight = 0; // New: Dynamic floor
+        this.groundHeight = 0; 
         
-        this.pitchVelocity = 0;
+        this.pitchVelocity = 0; 
         this.rollVelocity = 0;
         this.yawVelocity = 0;
+        this.vs = 0;
         this.lastUpdateTime = performance.now();
     }
 
     applyInputs(controls, deltaTime) {
         if (!deltaTime || deltaTime > 0.1) return;
 
-        // Constants (Using your "Sweet Spot" settings)
+        const targetSpeed = (controls.throttle || 5) * 22;
+        this.airspeed += (targetSpeed - this.airspeed) * deltaTime * 0.3;
+
+        // --- YOUR SWEET SPOT SETTINGS ---
         const controlAuthority = 35.0; 
         const damping = 1.8;           
         const responsiveness = 2.5;    
 
-        // Input Logic (Inertia)
         let pIn = controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0);
         let rIn = controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0);
         let yIn = controls.keys.KeyA ? -controlAuthority * 0.5 : (controls.keys.KeyD ? controlAuthority * 0.5 : 0);
@@ -33,13 +36,16 @@ export class FlightPhysics {
         this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
 
         const r = window.Cesium.Math.toRadians(this.roll);
-        this.pitch += (this.pitchVelocity * Math.cos(r)) * deltaTime;
-        this.heading += (this.pitchVelocity * Math.sin(r)) * deltaTime;
-        this.heading += (this.yawVelocity * Math.cos(r)) * deltaTime;
-        this.pitch -= (this.yawVelocity * Math.sin(r)) * deltaTime;
+        const cosR = Math.cos(r);
+        const sinR = Math.sin(r);
+
+        this.pitch += (this.pitchVelocity * cosR) * deltaTime;
+        this.heading += (this.pitchVelocity * sinR) * deltaTime;
+        this.heading += (this.yawVelocity * cosR) * deltaTime;
+        this.pitch -= (this.yawVelocity * sinR) * deltaTime;
         this.roll += this.rollVelocity * deltaTime;
 
-        // Lift & Weight
+        // Stability: Weight vs Lift
         this.pitch -= (1.5 + (1 - Math.cos(r)) * 8) * deltaTime;
         this.pitch += ((this.airspeed / 110) * 1.8 * Math.cos(r)) * deltaTime;
     }
@@ -52,11 +58,9 @@ export class FlightPhysics {
 
         const p = window.Cesium.Math.toRadians(this.pitch);
         const h = window.Cesium.Math.toRadians(this.heading);
-
         const vz = this.airspeed * Math.sin(p);
         
-        // --- DYNAMIC COLLISION ---
-        // We compare current altitude to the terrain height sampled from Cesium
+        // Dynamic Ground Collision
         if (this.altitude <= this.groundHeight && vz < 0) {
             this.altitude = this.groundHeight;
             this.pitch = 0;
@@ -69,7 +73,6 @@ export class FlightPhysics {
 
         const vx = this.airspeed * Math.cos(p) * Math.cos(h);
         const vy = this.airspeed * Math.cos(p) * Math.sin(h);
-
         const metersPerDegLat = 111000;
         const radLat = window.Cesium.Math.toRadians(this.latitude);
         const metersPerDegLon = metersPerDegLat * Math.cos(radLat);
@@ -77,11 +80,14 @@ export class FlightPhysics {
         this.latitude += (vx * frameTime) / metersPerDegLat;
         this.longitude += (vy * frameTime) / metersPerDegLon;
 
+        this.heading = (this.heading + 360) % 360;
+        if (this.roll > 180) this.roll -= 360;
+        if (this.roll < -180) this.roll += 360;
+
         return {
             latitude: this.latitude, longitude: this.longitude, altitude: this.altitude,
             heading: this.heading, pitch: this.pitch, roll: this.roll,
-            airspeed: this.airspeed, vs: this.vs,
-            agl: this.altitude - this.groundHeight // Altitude Above Ground Level
+            airspeed: this.airspeed, vs: this.vs, groundHeight: this.groundHeight
         };
     }
 }
