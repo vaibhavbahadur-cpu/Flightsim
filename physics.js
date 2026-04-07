@@ -24,9 +24,9 @@ export class FlightPhysics {
         this.airspeed += (targetSpeed - this.airspeed) * deltaTime * 0.3;
 
         // 2. HEAVY JET PHYSICS CONSTANTS
-        const controlAuthority = 30.0; // How much "torque" the surfaces have
+        const controlAuthority = 35.0; // How much "torque" the surfaces have
         const damping = 1.8;           // Air resistance (prevents the Su-35 "whip")
-        const responsiveness = 2;    // Overall "weight" (Lower = Heavier)
+        const responsiveness = 2.5;    // Overall "weight" (Lower = Heavier)
 
         // --- PITCH MOMENTUM (Elevators) ---
         let pitchInput = 0;
