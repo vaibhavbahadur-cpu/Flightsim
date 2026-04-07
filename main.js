@@ -1,59 +1,32 @@
-import { FlightWorld } from './cesium.js';
-import { Boeing748 } from './plane/plane.js';
-import { FlightCamera } from './camera.js';
-import { FlightPhysics } from './physics.js';
-import { FlightControls } from './controls.js';
+// Inside your flightLoop(now) function in main.js:
 
-const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIwLTQyOWEtYTYwYy1lY2IyYmNlMzNkZTYiLCJpZCI6NDEwODE3LCJpYXQiOjE3NzQ3OTc2NTB9.-Fwn3dLnJIdfvcJj2tiB7UHey2alHBtdRH8hCXcIqJY';
-
-export async function startSimulation() {
-    if (typeof window.Cesium === 'undefined') {
-        setTimeout(startSimulation, 500);
-        return;
-    }
-
-    const world = new FlightWorld('cesiumContainer', TOKEN);
-    const my747 = new Boeing748(world.viewer);
-    const camSystem = new FlightCamera(world.viewer);
-    const controls = new FlightControls();
-    const physics = new FlightPhysics(30.19, -97.67, 305);
-    
-    my747.spawn(physics.longitude, physics.latitude, physics.altitude);
-
-    let cameraInitialized = false;
-    let lastFrameTime = performance.now();
-
-    function flightLoop(now) {
-        if (my747.aircraftEntity) {
-            const deltaTime = (now - lastFrameTime) / 1000;
-            lastFrameTime = now;
-
-            physics.applyInputs(controls, deltaTime);
-            const data = physics.update();
-            
-            const position = window.Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude, data.altitude);
-            my747.aircraftEntity.position = position;
-
-            // Full 3-axis visual rotation
-            const visualHeading = data.heading - 90; 
-            const hpr = new window.Cesium.HeadingPitchRoll(
-                window.Cesium.Math.toRadians(visualHeading), 
-                window.Cesium.Math.toRadians(data.pitch), 
-                window.Cesium.Math.toRadians(data.roll)
-            );
-            
-            my747.aircraftEntity.orientation = window.Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
-
-            if (!cameraInitialized) {
-                const matrix = my747.aircraftEntity.computeModelMatrix(window.Cesium.JulianDate.now());
-                if (matrix && !window.Cesium.Matrix4.equals(matrix, window.Cesium.Matrix4.IDENTITY)) {
-                    camSystem.initializeFollow(my747.aircraftEntity);
-                    cameraInitialized = true;
-                }
-            }
+function flightLoop(now) {
+    if (my747.aircraftEntity) {
+        // 1. Get Terrain Height for current position
+        const cartographic = window.Cesium.Cartographic.fromDegrees(
+            physics.longitude, 
+            physics.latitude
+        );
+        
+        // Sample the terrain height at this location
+        const terrainHeight = world.viewer.scene.globe.getHeight(cartographic);
+        
+        if (terrainHeight !== undefined) {
+            physics.groundHeight = terrainHeight;
         }
-        requestAnimationFrame(flightLoop);
-    }
 
-    setTimeout(() => { requestAnimationFrame(flightLoop); }, 3000);
+        // 2. Run Physics
+        const deltaTime = (now - lastFrameTime) / 1000;
+        lastFrameTime = now;
+        physics.applyInputs(controls, deltaTime);
+        const data = physics.update();
+
+        // 3. Update Model
+        const position = window.Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude, data.altitude);
+        my747.aircraftEntity.position = position;
+        
+        // ... (Orientation and Telemetry code follows)
+        telemetry.update(data, controls);
+    }
+    requestAnimationFrame(flightLoop);
 }
