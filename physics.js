@@ -23,62 +23,63 @@ export class FlightPhysics {
     applyInputs(controls, deltaTime) {
         if (!deltaTime || deltaTime > 0.1) return;
 
-        // --- 1. REALISTIC THRUST vs GRAVITY ---
-        const throttleInput = controls.throttle || 5;
-        const targetSpeed = throttleInput * 22;
-        
-        // Gravity Drag: Bleed speed based on pitch (9.8 m/s^2 * sin(pitch))
         const pRad = window.Cesium.Math.toRadians(this.pitch);
-        const gravityDrag = Math.sin(pRad) * 9.8 * deltaTime;
-        
-        // Engine acceleration is slow on a 747
-        const enginePower = (targetSpeed - this.airspeed) * deltaTime * 0.2;
-        this.airspeed += enginePower - gravityDrag;
+        const rRad = window.Cesium.Math.toRadians(this.roll);
 
-        // --- 2. STALL MOMENT & ASYMMETRY ---
+        // --- 1. REALISTIC POWER-TO-WEIGHT ---
+        const throttleInput = controls.throttle || 5;
+        const maxEngineAccel = 5.0; // Acceleration in m/s^2
+        const currentThrust = (throttleInput / 9) * maxEngineAccel;
+        
+        // Gravity pulls at 9.8 m/s^2. If pitch is 90 deg, drag is -9.8. 
+        // Engine (5.0) - Gravity (9.8) = -4.8 m/s^2 (You WILL lose speed)
+        const gravityDrag = Math.sin(pRad) * 9.8; 
+        this.airspeed += (currentThrust - gravityDrag) * deltaTime;
+
+        // Prevent negative airspeed (backward flying)
+        if (this.airspeed < 5) this.airspeed = 5;
+
+        // --- 2. STALL DYNAMICS ---
         const liftFactor = this.staller.calculateLiftFactor(this.airspeed, this.pitch);
         this.isStalled = this.staller.isStalled;
-        
-        // Stronger Nose Drop: -40.0 makes it very hard to pull up during a stall
-        let stallNoseDrop = this.isStalled ? -40.0 : 0.0;
-        
-        // Asymmetric Wing Stall: Randomly roll the plane if stalled
-        let stallRoll = this.isStalled ? (Math.random() - 0.5) * 20.0 : 0.0;
 
-        // --- 3. PHYSICS EXECUTION ---
+        // ELEVATOR WASHOUT: If stalled, you lose 90% of your control power
+        const controlEfficiency = this.isStalled ? 0.1 : 1.0;
+
+        // VIOLENT NOSE DROP: Stronger torque that ignores your input
+        let stallNoseDrop = this.isStalled ? -60.0 : 0.0;
+        let stallRoll = this.isStalled ? (Math.random() - 0.5) * 40.0 : 0.0;
+
+        // --- 3. ROTATION PHYSICS ---
         const controlAuthority = 35.0; 
         const damping = 1.8;           
         const responsiveness = 2.5;    
 
-        let pIn = controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0);
-        let rIn = controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0);
-        let yIn = controls.keys.KeyA ? -controlAuthority * 0.5 : (controls.keys.KeyD ? controlAuthority * 0.5 : 0);
+        // Apply inputs multiplied by efficiency
+        let pIn = (controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0)) * controlEfficiency;
+        let rIn = (controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0)) * controlEfficiency;
+        let yIn = (controls.keys.KeyA ? -controlAuthority * 0.5 : (controls.keys.KeyD ? controlAuthority * 0.5 : 0)) * controlEfficiency;
 
-        // Apply forces (stall drop added here)
         this.pitchVelocity += (pIn + stallNoseDrop - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
         this.rollVelocity += (rIn + stallRoll - (this.rollVelocity * damping)) * deltaTime * responsiveness;
         this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
 
-        const r = window.Cesium.Math.toRadians(this.roll);
-        const cosR = Math.cos(r);
-        const sinR = Math.sin(r);
-
-        this.pitch += (this.pitchVelocity * cosR) * deltaTime;
-        this.heading += (this.pitchVelocity * sinR) * deltaTime;
-        this.heading += (this.yawVelocity * cosR) * deltaTime;
-        this.pitch -= (this.yawVelocity * sinR) * deltaTime;
+        this.pitch += (this.pitchVelocity * Math.cos(rRad)) * deltaTime;
+        this.heading += (this.pitchVelocity * Math.sin(rRad)) * deltaTime;
+        this.heading += (this.yawVelocity * Math.cos(rRad)) * deltaTime;
+        this.pitch -= (this.yawVelocity * Math.sin(rRad)) * deltaTime;
         this.roll += this.rollVelocity * deltaTime;
 
-        // Lift Logic
-        const gravityEffect = (1.5 + (1 - Math.cos(r)) * 8);
-        const liftEffect = ((this.airspeed / 110) * 1.8 * Math.cos(r)) * liftFactor;
+        // --- 4. LIFT vs FALLING ---
+        // If stalled, liftFactor is 0.2. Gravity is 1.5. You will descend FAST.
+        const gravityEffect = (1.5 + (1 - Math.cos(rRad)) * 8);
+        const liftEffect = ((this.airspeed / 110) * 2.0 * Math.cos(rRad)) * liftFactor;
 
         this.pitch -= gravityEffect * deltaTime;
         this.pitch += liftEffect * deltaTime;
     }
 
     update() {
-        // ... (Keep your existing update() function for Lat/Lon/Alt math) ...
         const now = performance.now();
         const deltaTime = (now - this.lastUpdateTime) / 1000;
         const frameTime = deltaTime > 0 ? deltaTime : 0.016;
@@ -86,8 +87,11 @@ export class FlightPhysics {
 
         const p = window.Cesium.Math.toRadians(this.pitch);
         const h = window.Cesium.Math.toRadians(this.heading);
+        
+        // Vertical Speed calculation
         const vz = this.airspeed * Math.sin(p);
         
+        // Ground Collision
         if (this.altitude <= this.groundHeight && vz < 0) {
             this.altitude = this.groundHeight;
             this.pitch = 0;
@@ -98,6 +102,7 @@ export class FlightPhysics {
             this.vs = vz;
         }
 
+        // Horizontal movement
         const vx = this.airspeed * Math.cos(p) * Math.cos(h);
         const vy = this.airspeed * Math.cos(p) * Math.sin(h);
         const metersPerDegLat = 111000;
