@@ -14,8 +14,10 @@ export class SpoilerModule {
             orientation: parentEntity.orientation,
             model: {
                 uri: this.spoilerUri,
-                minimumPixelSize: 128,
-                show: true // Keep it TRUE so we can find it
+                // Scale 0.001 converts your 2300mm TinkerCAD model to 2.3 meters
+                scale: 0.001, 
+                minimumPixelSize: 1, 
+                show: false // Set back to false so it only shows when braking
             }
         });
         console.log("SPOILER MODULE: Entity added to viewer");
@@ -24,17 +26,30 @@ export class SpoilerModule {
     update(parentPosition, parentOrientation, isBraking) {
         if (!this.spoilerEntity) return;
 
-        // This should show up constantly in your console
-        console.log("SPOILER MODULE: Updating... B-Key State:", isBraking);
-
+        // Using Matrix math to keep the spoiler bonded to the plane's local coordinates
         const modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(parentPosition);
-        const offset = new Cesium.Cartesian3(0, 0, 5.0); // 5 meters up
+        
+        /**
+         * OFFSET ADJUSTMENT:
+         * x: 12.0  -> Moves the panel 12 meters to the RIGHT (onto the wing)
+         * y: -5.0  -> Moves the panel 5 meters BACK (toward the tail)
+         * z: 3.5   -> Moves the panel 3.5 meters UP (to sit on top of the wing)
+         */
+        const xOffset = 12.0; 
+        const yOffset = -5.0; 
+        const zOffset = 3.5;  
+
+        const offset = new Cesium.Cartesian3(xOffset, yOffset, zOffset); 
         const finalPos = Cesium.Matrix4.multiplyByPoint(modelMatrix, offset, new Cesium.Cartesian3());
 
         this.spoilerEntity.position = finalPos;
         this.spoilerEntity.orientation = parentOrientation;
         
-        // Force it to stay visible for now
-        this.spoilerEntity.model.show = true; 
+        // Show the spoiler only when the B key is pressed
+        this.spoilerEntity.model.show = isBraking;
+        
+        if (isBraking) {
+            console.log("SPOILERS DEPLOYED: B-Key active");
+        }
     }
 }
