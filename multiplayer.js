@@ -2,66 +2,80 @@ export class FlightMultiplayer {
     constructor(viewer, nav, callsign) {
         this.viewer = viewer;
         this.nav = nav;
-        this.callsign = callsign.replace(/\s+/g, '-').toLowerCase();
+        // Your unique ID (random or chosen)
+        this.id = callsign.replace(/\s+/g, '-').toLowerCase() + "-" + Math.floor(Math.random() * 1000);
+        this.callsign = callsign;
         this.others = {};
         this.connections = {};
 
-        // Create a status indicator on the screen
+        // 1. Create the UI HUD
         this.statusDiv = document.createElement('div');
-        this.statusDiv.style.cssText = "position:absolute; top:10px; right:10px; padding:10px; background:rgba(0,0,0,0.7); color:#0f0; font-family:monospace; z-index:10005; border:1px solid #0f0;";
-        this.statusDiv.innerHTML = `ID: ${this.callsign} <br> STATUS: INITIALIZING...`;
+        this.statusDiv.style.cssText = "position:absolute; top:10px; right:10px; padding:10px; background:rgba(0,0,0,0.8); color:#0f0; font-family:monospace; z-index:10005; border:1px solid #0f0; border-radius:5px;";
         document.body.appendChild(this.statusDiv);
 
-        this.peer = new Peer(this.callsign);
+        // 2. Start PeerJS
+        this.peer = new Peer(this.id);
         this.init();
     }
 
     init() {
-        this.peer.on('open', (id) => {
-            this.statusDiv.innerHTML = `ID: ${id} <br> STATUS: ONLINE (WAITING)`;
-            this.statusDiv.style.color = "#0f0";
-
-            // If we are pilot-2, try to find pilot-1 every 3 seconds
-            if (this.callsign === 'pilot-2') {
-                setInterval(() => {
-                    if (Object.keys(this.connections).length === 0) {
-                        this.connectTo('pilot-1');
-                    }
-                }, 3000);
+        this.peer.on('open', (myId) => {
+            this.statusDiv.innerHTML = `CALLSIGN: ${this.callsign}<br>RADAR: SCANNING...`;
+            
+            // DISCOVERY LOGIC:
+            // We "broadcast" our ID to a public list so others can find us.
+            // Since PeerJS doesn't have a built-in "Lobby List", 
+            // we try to connect to a few common 'slots' (slot-1, slot-2, etc.)
+            for (let i = 1; i <= 5; i++) {
+                this.tryConnect(`b748-slot-${i}`);
             }
+
+            // Also, we try to BECOME a slot if it's empty
+            this.occupySlot();
         });
 
         this.peer.on('connection', (conn) => {
             this.setupConnection(conn);
         });
-
-        this.peer.on('error', (err) => {
-            this.statusDiv.innerHTML = `ID: ${this.callsign} <br> ERROR: ${err.type}`;
-            this.statusDiv.style.color = "#f00";
-        });
     }
 
-    connectTo(targetId) {
-        console.log("Calling " + targetId);
+    async occupySlot() {
+        // Try to take a slot so others can find us easily
+        for (let i = 1; i <= 10; i++) {
+            let slotPeer = new Peer(`b748-slot-${i}`);
+            slotPeer.on('open', () => {
+                console.log(`Taking Slot ${i} as a beacon.`);
+                slotPeer.on('connection', (conn) => {
+                    // When someone connects to our slot, we tell them our REAL random ID
+                    conn.on('open', () => {
+                        conn.send({ type: 'HANDSHAKE', realId: this.id });
+                    });
+                });
+            });
+            slotPeer.on('error', () => { /* Slot taken, try next */ });
+        }
+    }
+
+    tryConnect(targetId) {
+        if (targetId === this.id) return;
         const conn = this.peer.connect(targetId);
         this.setupConnection(conn);
     }
 
     setupConnection(conn) {
-        conn.on('open', () => {
-            this.connections[conn.peer] = conn;
-            this.statusDiv.innerHTML = `ID: ${this.callsign} <br> STATUS: CONNECTED TO ${conn.peer}`;
-            this.statusDiv.style.color = "#0ff";
-        });
-
         conn.on('data', (data) => {
+            // If we hit a slot beacon, connect to their real random name
+            if (data.type === 'HANDSHAKE') {
+                this.tryConnect(data.realId);
+                return;
+            }
+
+            // Otherwise, it's flight data!
             this.updateEntity(data);
             this.nav.updateRemotePlayer(data.id, data.pos.lat, data.pos.lon, data.callsign, data.pos.alt);
-        });
-
-        conn.on('close', () => {
-            this.statusDiv.innerHTML = `ID: ${this.callsign} <br> STATUS: DISCONNECTED`;
-            this.removePlayer(conn.peer);
+            
+            this.connections[conn.peer] = conn;
+            this.statusDiv.innerHTML = `CALLSIGN: ${this.callsign}<br>PILOTS NEARBY: ${Object.keys(this.others).length}`;
         });
     }
 
@@ -71,15 +85,15 @@ export class FlightMultiplayer {
                 name: data.callsign,
                 model: { 
                     uri: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/CesiumMilkTruck/glTF/CesiumMilkTruck.glb', 
-                    scale: 20, // Made it bigger to be sure you see it
-                    minimumPixelSize: 128 
+                    scale: 20, 
+                    minimumPixelSize: 80 
                 },
                 label: { 
                     text: data.callsign.toUpperCase(), 
-                    font: 'bold 20pt monospace', 
+                    font: 'bold 16pt monospace', 
                     fillColor: Cesium.Color.YELLOW,
-                    pixelOffset: new Cesium.Cartesian2(0, -80),
-                    disableDepthTestDistance: Number.POSITIVE_INFINITY // Always stays on top
+                    pixelOffset: new Cesium.Cartesian2(0, -60),
+                    disableDepthTestDistance: Number.POSITIVE_INFINITY 
                 }
             });
         }
@@ -89,14 +103,8 @@ export class FlightMultiplayer {
             new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(data.hpr.h-90), Cesium.Math.toRadians(data.hpr.p), Cesium.Math.toRadians(data.hpr.r)));
     }
 
-    removePlayer(id) {
-        if (this.others[id]) { this.viewer.entities.remove(this.others[id]); delete this.others[id]; }
-        this.nav.removeRemotePlayer(id);
-        delete this.connections[id];
-    }
-
     send(lat, lon, alt, h, p, r) {
-        const payload = { id: this.callsign, callsign: this.callsign, pos: { lat, lon, alt }, hpr: { h, p, r } };
+        const payload = { id: this.id, callsign: this.callsign, pos: { lat, lon, alt }, hpr: { h, p, r } };
         for (let id in this.connections) {
             if (this.connections[id].open) {
                 this.connections[id].send(payload);
