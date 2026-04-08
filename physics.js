@@ -15,6 +15,7 @@ export class FlightPhysics {
         this.yawVelocity = 0;
         this.vs = 0;
         this.isStalled = false;
+        this.spoilerAngle = 0; // NEW: track spoiler position
         this.staller = new StallModule();
         this.lastUpdateTime = performance.now();
     }
@@ -24,22 +25,31 @@ export class FlightPhysics {
 
         const pRad = window.Cesium.Math.toRadians(this.pitch);
         const rRad = window.Cesium.Math.toRadians(this.roll);
-        
-        // Check if we are on the ground (with a small buffer)
         const isOnGround = (this.altitude <= this.groundHeight + 1.5);
+
+        // --- NEW: SPOILER PIVOT LOGIC ---
+        const targetAngle = controls.keys.KeyB ? 60 : 0;
+        const pivotSpeed = 120; 
+        if (this.spoilerAngle < targetAngle) {
+            this.spoilerAngle = Math.min(targetAngle, this.spoilerAngle + pivotSpeed * deltaTime);
+        } else {
+            this.spoilerAngle = Math.max(targetAngle, this.spoilerAngle - pivotSpeed * deltaTime);
+        }
 
         // --- 1. THRUST, BRAKES & FRICTION ---
         const throttleInput = controls.throttle || 0;
         const maxEngineAccel = 6.5; 
         let currentThrust = (throttleInput / 9) * maxEngineAccel;
-        
         const gravityDrag = Math.sin(pRad) * 9.8; 
         
-        let totalDecel = gravityDrag;
+        // NEW: Spoiler Air Resistance
+        let spoilerDrag = (this.spoilerAngle / 60) * 4.0;
+        let totalDecel = gravityDrag + spoilerDrag;
+
         if (isOnGround) {
-            totalDecel += 0.5; // Natural rolling resistance
+            totalDecel += 0.5; 
             if (controls.keys.Space) {
-                totalDecel += 8.0; // Heavy wheel braking force
+                totalDecel += 8.0; 
             }
         }
 
@@ -49,7 +59,6 @@ export class FlightPhysics {
         // --- 2. AERODYNAMICS & STALL ---
         const liftFactor = this.staller.calculateLiftFactor(this.airspeed, this.pitch, this.vs);
         this.isStalled = this.staller.isStalled;
-
         const controlEfficiency = this.isStalled ? 0.05 : 1.0;
         let stallNoseDrop = this.isStalled ? -75.0 : 0.0;
         let stallRoll = this.isStalled ? (Math.random() - 0.5) * 45.0 : 0.0;
@@ -61,23 +70,17 @@ export class FlightPhysics {
 
         let pIn = (controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0)) * controlEfficiency;
         let rIn = (controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0)) * controlEfficiency;
-        
-        // Rudder (A/D)
         let yIn = (controls.keys.KeyA ? -controlAuthority : (controls.keys.KeyD ? controlAuthority : 0));
 
         if (isOnGround) {
-            // Nose-wheel steering
             const taxiSteerEffect = (this.airspeed / 20); 
             this.heading += yIn * taxiSteerEffect * deltaTime;
             this.yawVelocity = 0; 
-            
-            // GROUND LEVELING: Stop the nose dive/tilt while on tarmac
             this.pitch *= 0.9; 
             this.roll *= 0.9;
             this.pitchVelocity = 0;
             this.rollVelocity = 0;
         } else {
-            // Flight Yaw
             yIn *= (controlEfficiency * 0.5); 
             this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
         }
@@ -91,15 +94,13 @@ export class FlightPhysics {
         this.pitch -= (this.yawVelocity * Math.sin(rRad)) * deltaTime;
         this.roll += this.rollVelocity * deltaTime;
 
-        // --- 4. LIFT VS WEIGHT (Applied only in air) ---
+        // --- 4. LIFT VS WEIGHT ---
         if (!isOnGround) {
             const gravityWeight = (1.8 + (1 - Math.cos(rRad)) * 10);
             const liftEffect = ((this.airspeed / 110) * 2.2 * Math.cos(rRad)) * liftFactor;
-
             this.pitch -= gravityWeight * deltaTime;
             this.pitch += liftEffect * deltaTime;
         } else {
-            // Keep pitch/roll at absolute zero if very close to level on ground
             if (Math.abs(this.pitch) < 0.1) this.pitch = 0;
             if (Math.abs(this.roll) < 0.1) this.roll = 0;
         }
@@ -140,7 +141,7 @@ export class FlightPhysics {
             latitude: this.latitude, longitude: this.longitude, altitude: this.altitude,
             heading: this.heading, pitch: this.pitch, roll: this.roll,
             airspeed: this.airspeed, vs: this.vs, groundHeight: this.groundHeight,
-            isStalled: this.isStalled
+            isStalled: this.isStalled, spoilerAngle: this.spoilerAngle // Return for visual update
         };
     }
 }
