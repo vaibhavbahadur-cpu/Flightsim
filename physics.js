@@ -5,7 +5,7 @@ export class FlightPhysics {
         this.latitude = lat;
         this.longitude = lon;
         this.altitude = alt;
-        this.airspeed = 250; 
+        this.airspeed = 130; 
         this.heading = 170;  
         this.pitch = 0;      
         this.roll = 0;       
@@ -13,6 +13,9 @@ export class FlightPhysics {
         this.pitchVelocity = 0; 
         this.rollVelocity = 0;
         this.yawVelocity = 0;
+        this.vs = 0;
+        this.isStalled = false;
+        this.staller = new StallModule();
         this.lastUpdateTime = performance.now();
     }
 
@@ -20,96 +23,109 @@ export class FlightPhysics {
         if (!deltaTime || deltaTime > 0.1) return;
 
         const pRad = window.Cesium.Math.toRadians(this.pitch);
-        const isOnGround = (this.altitude <= this.groundHeight + 2.0);
+        const rRad = window.Cesium.Math.toRadians(this.roll);
+        const isOnGround = (this.altitude <= this.groundHeight + 1.5);
 
-        // --- 1. LIFT VECTOR & CLIMB PENALTY ---
+        // --- 1. THRUST, BRAKES & FRICTION ---
         const throttleInput = controls.throttle || 0;
-        let thrust = (throttleInput / 9) * 12.0; 
+        const maxEngineAccel = 6.5; 
+        let currentThrust = (throttleInput / 9) * maxEngineAccel;
         
-        // Induced Drag: Climbing at steep angles bleeds speed
-        let climbPenalty = Math.sin(pRad) * 18.0; 
-        let airbrakeDrag = (controls.keys.KeyB ? 35.0 : 0);
-
-        this.airspeed += (thrust - climbPenalty - airbrakeDrag) * deltaTime;
-        if (this.airspeed < 0) this.airspeed = 0;
-
-        // --- 2. THE 170KT STALL LOGIC ---
-        const stallSpeed = 170;
-        // Control effectiveness: Dies at 145kts
-        const airEffectiveness = Math.max(0, Math.min(1.0, (this.airspeed - 145) / 55));
-
-        // STALL WARNING & NOSE DROP
-        let stallNoseDrop = 0;
-        if (this.airspeed < stallSpeed && !isOnGround) {
-            // Visual Warning in Console
-            if (Math.random() > 0.95) console.warn("STALL STALL STALL");
-            
-            // Nose slams down to ground (no flip)
-            stallNoseDrop = (stallSpeed - this.airspeed) * -3.5; 
+        const gravityDrag = Math.sin(pRad) * 9.8; 
+        
+        // Add Ground Friction and Brakes
+        let totalDecel = gravityDrag;
+        if (isOnGround) {
+            totalDecel += 0.5; // Natural ground rolling resistance
+            if (controls.keys.Space) {
+                totalDecel += 8.0; // Heavy Wheel Braking
+            }
         }
 
-        // --- 3. ROTATION (INDEPENDENT AXES) ---
-        const damping = 4.0;
-        const responsiveness = 5.0;
+        this.airspeed += (currentThrust - totalDecel) * deltaTime;
+        if (this.airspeed < 0) this.airspeed = 0; // Don't move backwards
 
-        let pIn = (controls.keys.ArrowUp ? -75 : (controls.keys.ArrowDown ? 75 : 0));
-        let rIn = (controls.keys.ArrowLeft ? -75 : (controls.keys.ArrowRight ? 75 : 0));
-        let yIn = (controls.keys.KeyA ? -45 : (controls.keys.KeyD ? 45 : 0));
+        // --- 2. AERODYNAMICS & STALL ---
+        const liftFactor = this.staller.calculateLiftFactor(this.airspeed, this.pitch, this.vs);
+        this.isStalled = this.staller.isStalled;
+
+        const controlEfficiency = this.isStalled ? 0.05 : 1.0;
+        let stallNoseDrop = this.isStalled ? -75.0 : 0.0;
+        let stallRoll = this.isStalled ? (Math.random() - 0.5) * 45.0 : 0.0;
+
+        // --- 3. ROTATION PHYSICS (AIR & GROUND) ---
+        const controlAuthority = 35.0; 
+        const damping = 1.8;           
+        const responsiveness = 2.5;    
+
+        let pIn = (controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0)) * controlEfficiency;
+        let rIn = (controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0)) * controlEfficiency;
+        
+        // RUDDER (A/D): Handle Air Yaw and Ground Steering
+        let yIn = (controls.keys.KeyA ? -controlAuthority : (controls.keys.KeyD ? controlAuthority : 0));
 
         if (isOnGround) {
-            this.heading += (yIn / 15) * (this.airspeed / 10) * deltaTime;
-            this.pitch *= 0.5;
-            this.roll *= 0.5;
-            this.pitchVelocity = 0;
-            this.rollVelocity = 0;
+            // Nose-wheel steering: Turn heading directly based on speed when taxiing
+            const taxiSteerEffect = (this.airspeed / 20); // More steering at moderate speeds
+            this.heading += yIn * taxiSteerEffect * deltaTime;
+            this.yawVelocity = 0; // Disable yaw momentum while wheels are locked to ground
         } else {
-            // Apply air effectiveness: Slower = less control
-            this.pitchVelocity += ((pIn * airEffectiveness) + stallNoseDrop - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
-            this.rollVelocity += ((rIn * airEffectiveness) - (this.rollVelocity * damping)) * deltaTime * responsiveness;
-            this.yawVelocity += ((yIn * airEffectiveness) - (this.yawVelocity * damping)) * deltaTime * responsiveness;
-
-            this.pitch += this.pitchVelocity * deltaTime;
-            this.roll += this.rollVelocity * deltaTime;
-            this.heading += this.yawVelocity * deltaTime;
+            // Flight Yaw: Standard aerodynamic rudder
+            yIn *= (controlEfficiency * 0.5); 
+            this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
         }
+
+        this.pitchVelocity += (pIn + stallNoseDrop - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
+        this.rollVelocity += (rIn + stallRoll - (this.rollVelocity * damping)) * deltaTime * responsiveness;
+
+        this.pitch += (this.pitchVelocity * Math.cos(rRad)) * deltaTime;
+        this.heading += (this.pitchVelocity * Math.sin(rRad)) * deltaTime;
+        this.heading += (this.yawVelocity * Math.cos(rRad)) * deltaTime;
+        this.pitch -= (this.yawVelocity * Math.sin(rRad)) * deltaTime;
+        this.roll += this.rollVelocity * deltaTime;
+
+        // --- 4. LIFT VS WEIGHT ---
+        const gravityWeight = (1.8 + (1 - Math.cos(rRad)) * 10);
+        const liftEffect = ((this.airspeed / 110) * 2.2 * Math.cos(rRad)) * liftFactor;
+
+        this.pitch -= gravityWeight * deltaTime;
+        this.pitch += liftEffect * deltaTime;
     }
 
     update() {
         const now = performance.now();
-        const deltaTime = Math.min((now - this.lastUpdateTime) / 1000, 0.05);
+        const deltaTime = (now - this.lastUpdateTime) / 1000;
+        const frameTime = deltaTime > 0 ? deltaTime : 0.016;
         this.lastUpdateTime = now;
 
         const p = window.Cesium.Math.toRadians(this.pitch);
         const h = window.Cesium.Math.toRadians(this.heading);
-        
-        // --- 4. LIFT VS WEIGHT (SQUARED LAW) ---
         const vz = this.airspeed * Math.sin(p);
         
-        // Lift Factor: 1.0 at 170kts. At 85kts, lift is only 0.25.
-        let liftFactor = Math.pow(this.airspeed / 170, 2); 
-        
-        if (this.altitude <= this.groundHeight) {
+        if (this.altitude <= this.groundHeight && vz < 0) {
             this.altitude = this.groundHeight;
+            this.pitch = Math.max(0, this.pitch); // Don't let nose bury in ground
+            this.pitchVelocity = 0;
+            this.vs = 0;
         } else {
-            // Gravity = 28 units of force
-            const gravity = 28.0;
-            const netVerticalForce = (liftFactor * gravity) - gravity;
-            
-            // Vertical movement = Climb Rate + (Lift Deficit)
-            this.altitude += (vz + netVerticalForce) * deltaTime;
+            this.altitude += vz * frameTime;
+            this.vs = vz;
         }
 
         const vx = this.airspeed * Math.cos(p) * Math.cos(h);
         const vy = this.airspeed * Math.cos(p) * Math.sin(h);
-        
+        const metersPerDegLat = 111000;
         const radLat = window.Cesium.Math.toRadians(this.latitude);
-        this.latitude += (vx * deltaTime) / 111000;
-        this.longitude += (vy * deltaTime) / (111000 * Math.cos(radLat));
+        const metersPerDegLon = metersPerDegLat * Math.cos(radLat);
+
+        this.latitude += (vx * frameTime) / metersPerDegLat;
+        this.longitude += (vy * frameTime) / metersPerDegLon;
 
         return {
             latitude: this.latitude, longitude: this.longitude, altitude: this.altitude,
             heading: this.heading, pitch: this.pitch, roll: this.roll,
-            airspeed: this.airspeed
+            airspeed: this.airspeed, vs: this.vs, groundHeight: this.groundHeight,
+            isStalled: this.isStalled
         };
     }
 }
