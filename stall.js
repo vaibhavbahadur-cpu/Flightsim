@@ -1,32 +1,30 @@
 export class StallModule {
     constructor() {
         this.isStalled = false;
-        this.stallThreshold = 87; // ~170 Knots in m/s
+        // 170 Knots is approx 87.5 m/s
+        this.stallSpeedThreshold = 87.5; 
     }
 
-    calculateLiftFactor(airspeed, pitch, flapSetting = 0) {
-        // 1. Check Speed Stall
-        // Flaps will eventually lower this threshold, but for now it's static
-        const speedStall = airspeed < this.stallThreshold;
+    calculateLiftFactor(airspeed, pitch, vs) {
+        // 1. Check for Speed Stall
+        const speedStall = airspeed < this.stallSpeedThreshold;
 
-        // 2. Check Angle of Attack (AoA) Stall
-        // If the nose is pointed more than 25 degrees up at low speed, the wing stalls
-        const criticalAoA = 25;
-        const aoaStall = pitch > criticalAoA && airspeed < 120;
+        // 2. Check for Angle of Attack (AoA) Stall
+        // AoA = Pitch - Flight Path Angle
+        const flightPathAngle = (Math.asin(vs / Math.max(airspeed, 1)) * (180 / Math.PI));
+        const aoa = pitch - flightPathAngle;
+        
+        // Critical AoA for a 747 is roughly 18-20 degrees
+        const aoaStall = aoa > 20 && airspeed < 130;
 
         this.isStalled = speedStall || aoaStall;
 
-        if (this.isStalled) {
-            // Return a penalty: 0.2 means you only have 20% of normal lift
-            return 0.2; 
-        }
-
-        // Normal flight: Lift is 1.0 (100%)
-        return 1.0;
+        // If stalled, lift drops to 15%. If flying, lift is 100%.
+        return this.isStalled ? 0.15 : 1.0;
     }
 
     getNoseDropTorque() {
-        // If stalled, return a value to "push" the nose down
-        return this.isStalled ? -15.0 : 0.0;
+        // Significant downward force when stalled
+        return this.isStalled ? -75.0 : 0.0;
     }
 }
