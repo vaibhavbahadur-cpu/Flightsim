@@ -2,36 +2,48 @@ export class FlightMultiplayer {
     constructor(viewer, nav, callsign) {
         this.viewer = viewer;
         this.nav = nav;
-        this.callsign = callsign.replace(/\s+/g, '-').toLowerCase(); // PeerJS needs IDs with no spaces
+        this.callsign = callsign.replace(/\s+/g, '-').toLowerCase();
         this.others = {};
-        
-        // Connect to the free public PeerJS cloud
-        this.peer = new Peer(this.callsign);
         this.connections = {};
+
+        // 1. Initialize Peer with your callsign
+        this.peer = new Peer(this.callsign);
 
         this.init();
     }
 
     init() {
         this.peer.on('open', (id) => {
-            console.log('My flight ID is: ' + id);
+            console.log('Online as: ' + id);
+            // AUTO-DISCOVERY: Try to find a partner if you are pilot-2
+            if (this.callsign.includes('2')) {
+                this.connectTo('pilot-1');
+            } else if (this.callsign.includes('1')) {
+                this.connectTo('pilot-2');
+            }
         });
 
-        // Listen for incoming "flight data" from other pilots
+        // Handle incoming connections
         this.peer.on('connection', (conn) => {
             this.setupConnection(conn);
         });
+    }
 
-        // Optional: Manual connect function (for testing)
-        window.connectToPilot = (targetId) => {
-            const conn = this.peer.connect(targetId);
-            this.setupConnection(conn);
-        };
+    connectTo(targetId) {
+        console.log("Attempting to find " + targetId + "...");
+        const conn = this.peer.connect(targetId);
+        this.setupConnection(conn);
     }
 
     setupConnection(conn) {
+        conn.on('open', () => {
+            console.log("Connected to: " + conn.peer);
+            this.connections[conn.peer] = conn;
+        });
+
         conn.on('data', (data) => {
             this.updateEntity(data);
+            // Update the Nav Map Radar
             this.nav.updateRemotePlayer(
                 data.id, 
                 data.pos.lat, 
@@ -40,12 +52,9 @@ export class FlightMultiplayer {
                 data.pos.alt
             );
         });
-        
-        conn.on('close', () => {
-            this.removePlayer(conn.peer);
-        });
-        
-        this.connections[conn.peer] = conn;
+
+        conn.on('close', () => this.removePlayer(conn.peer));
+        conn.on('error', () => this.removePlayer(conn.peer));
     }
 
     updateEntity(data) {
@@ -58,9 +67,10 @@ export class FlightMultiplayer {
                 },
                 label: { 
                     text: data.callsign, 
-                    font: '12pt monospace', 
-                    fillColor: Cesium.Color.YELLOW, 
-                    pixelOffset: new Cesium.Cartesian2(0, -50) 
+                    font: '14pt monospace', 
+                    fillColor: Cesium.Color.YELLOW,
+                    outlineWidth: 2,
+                    pixelOffset: new Cesium.Cartesian2(0, -60)
                 }
             });
         }
@@ -91,7 +101,6 @@ export class FlightMultiplayer {
             hpr: { h, p, r }
         };
 
-        // Send data to everyone we are connected to
         for (let id in this.connections) {
             if (this.connections[id].open) {
                 this.connections[id].send(payload);
