@@ -6,6 +6,7 @@ export class Boeing748 {
         this.modelUri = 'https://raw.githack.com/vaibhavbahadur-cpu/7478/main/Boeing%20747-8I.glb';
         this.aircraftEntity = null;
         this.spoilerSystem = new SpoilerModule(viewer);
+        console.log("Boeing748: SpoilerModule initialized");
     }
 
     spawn(lon, lat, alt) {
@@ -24,11 +25,19 @@ export class Boeing748 {
         });
 
         this.viewer.trackedEntity = this.aircraftEntity;
+        
+        // Initialize the spoilers
         this.spoilerSystem.setup(this.aircraftEntity);
+        console.log("Boeing748: Spoiler system setup complete");
     }
 
     update(data, controls) {
         if (!this.aircraftEntity) return;
+
+        // CRITICAL CHECK: If main.js isn't passing controls, this stops here
+        if (!controls || !controls.keys) {
+            return;
+        }
 
         const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude, data.altitude);
         const hpr = new Cesium.HeadingPitchRoll(
