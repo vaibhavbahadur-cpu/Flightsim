@@ -5,7 +5,7 @@ export class FlightPhysics {
         this.latitude = lat;
         this.longitude = lon;
         this.altitude = alt;
-        this.airspeed = 250; // Start at cruise speed
+        this.airspeed = 250; 
         this.heading = 170;  
         this.pitch = 0;      
         this.roll = 0;       
@@ -24,51 +24,51 @@ export class FlightPhysics {
 
         const pRad = window.Cesium.Math.toRadians(this.pitch);
         const rRad = window.Cesium.Math.toRadians(this.roll);
-        const isOnGround = (this.altitude <= this.groundHeight + 2.0);
+        const isOnGround = (this.altitude <= this.groundHeight + 2.5);
 
-        // --- 1. SPEED & SPOILER DRAG ---
+        // --- 1. SPEED & SPOILERS ---
         const throttleInput = controls.throttle || 0;
         let currentThrust = (throttleInput / 9) * 8.0; 
         
-        // Spoiler Deployment
         const targetSpoiler = controls.keys.KeyB ? 60 : 0;
-        this.spoilerAngle += (targetSpoiler - this.spoilerAngle) * 2.0 * deltaTime;
+        this.spoilerAngle += (targetSpoiler - this.spoilerAngle) * 3.0 * deltaTime;
         
-        let spoilerDrag = (this.spoilerAngle / 60) * 35.0; 
-        let gravityDrag = Math.sin(pRad) * 9.8;
+        let spoilerDrag = (this.spoilerAngle / 60) * 45.0; 
+        let gravityDrag = Math.sin(pRad) * 15.0;
 
         this.airspeed += (currentThrust - (gravityDrag + spoilerDrag)) * deltaTime;
         if (this.airspeed < 0) this.airspeed = 0;
 
-        // --- 2. THE 170 KNOT STALL & CONTROL AUTHORITY ---
+        // --- 2. THE VIOLENT 170 KNOT STALL ---
         const stallSpeed = 170; 
         
-        // Control effectiveness: 100% at 200kts+, 0% at 150kts
-        const airEffectiveness = Math.max(0, Math.min(1.0, (this.airspeed - 150) / 50));
+        // Control effectiveness dies completely at 160kts
+        const airEffectiveness = Math.max(0, Math.min(1.0, (this.airspeed - 160) / 30));
 
-        // Automatic Nose Drop: Gravity wins when the wings stop flying
+        // SUPERFAST NOSE DROP
         let stallNoseDrop = 0;
         if (this.airspeed < stallSpeed && !isOnGround) {
-            // Stronger downward torque as speed drops below 170
-            stallNoseDrop = (stallSpeed - this.airspeed) * -2.8; 
+            // High multiplier (-8.0) for a violent pitch down
+            stallNoseDrop = (stallSpeed - this.airspeed) * -8.0; 
         }
 
         // --- 3. ROTATION PHYSICS ---
-        const damping = 2.2;           
-        const responsiveness = 3.0;    
+        // Lower damping = more violent movement
+        const damping = 1.2;           
+        const responsiveness = 4.0;    
 
-        let pIn = (controls.keys.ArrowUp ? -45 : (controls.keys.ArrowDown ? 45 : 0));
-        let rIn = (controls.keys.ArrowLeft ? -50 : (controls.keys.ArrowRight ? 50 : 0));
+        let pIn = (controls.keys.ArrowUp ? -60 : (controls.keys.ArrowDown ? 60 : 0));
+        let rIn = (controls.keys.ArrowLeft ? -60 : (controls.keys.ArrowRight ? 60 : 0));
 
         if (isOnGround) {
-            // Taxi logic
-            this.heading += (controls.keys.KeyA ? -1 : (controls.keys.KeyD ? 1 : 0)) * (this.airspeed / 15) * deltaTime;
-            this.pitch *= 0.7; 
-            this.roll *= 0.7;
+            this.heading += (controls.keys.KeyA ? -1 : (controls.keys.KeyD ? 1 : 0)) * (this.airspeed / 10) * deltaTime;
+            this.pitch *= 0.5; 
+            this.roll *= 0.5;
             this.pitchVelocity = 0;
             this.rollVelocity = 0;
         } else {
-            // Flight logic: Scale inputs by airEffectiveness
+            // If you're at 5kts, (pIn * airEffectiveness) is 0. 
+            // Only stallNoseDrop remains, slamming the nose down.
             this.pitchVelocity += ((pIn * airEffectiveness) + stallNoseDrop - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
             this.rollVelocity += ((rIn * airEffectiveness) - (this.rollVelocity * damping)) * deltaTime * responsiveness;
         }
@@ -77,19 +77,17 @@ export class FlightPhysics {
         this.heading += (this.pitchVelocity * Math.sin(rRad)) * deltaTime;
         this.roll += this.rollVelocity * deltaTime;
 
-        // --- 4. LIFT VS WEIGHT (QUADRATIC STALL) ---
+        // --- 4. LIFT VS WEIGHT (HEAVY DROP) ---
         if (!isOnGround) {
-            const weightForce = 22.0; 
-            // Lift formula: (Actual Speed / Stall Speed)^2
-            // At 170kts = 1.0 (Level flight). At 85kts = 0.25 (Falling).
+            const weightForce = 35.0; // Heavier feel
             const liftForce = Math.pow(this.airspeed / stallSpeed, 2) * weightForce;
 
             this.pitch -= weightForce * deltaTime;
             this.pitch += liftForce * deltaTime;
 
-            // Extra Sink Rate if stalled
+            // Immediate altitude loss during stall
             if (this.airspeed < stallSpeed) {
-                this.vs -= (stallSpeed - this.airspeed) * 0.4 * deltaTime;
+                this.vs -= (stallSpeed - this.airspeed) * 1.5 * deltaTime;
             }
         }
     }
@@ -108,9 +106,9 @@ export class FlightPhysics {
             this.altitude = this.groundHeight;
             if (vz < 0) this.vs = 0;
         } else {
+            // Add vertical sink rate (this.vs) to the actual altitude change
             this.altitude += (vz + (this.vs || 0)) * frameTime;
-            // Dampen the sink rate
-            this.vs *= 0.95; 
+            this.vs *= 0.98; 
         }
 
         const vx = this.airspeed * Math.cos(p) * Math.cos(h);
