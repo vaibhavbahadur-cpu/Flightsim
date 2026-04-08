@@ -12,7 +12,7 @@ export class FlightPhysics {
         this.groundHeight = 0; 
         this.pitchVelocity = 0; 
         this.rollVelocity = 0;
-        this.yawVelocity = 0;
+        this.yawVelocity = 0; // RE-ADDED YAW
         this.vs = 0;
         this.spoilerAngle = 0; 
         this.lastUpdateTime = performance.now();
@@ -23,11 +23,9 @@ export class FlightPhysics {
 
         const isOnGround = (this.altitude <= this.groundHeight + 2.0);
 
-        // --- 1. SIMPLE SPEED & BRAKES ---
+        // --- 1. SPEED & SPOILERS ---
         const throttleInput = controls.throttle || 0;
         let currentThrust = (throttleInput / 9) * 8.0; 
-        
-        // Spoiler/Airbrake Drag
         const targetSpoiler = controls.keys.KeyB ? 60 : 0;
         this.spoilerAngle += (targetSpoiler - this.spoilerAngle) * 3.0 * deltaTime;
         let spoilerDrag = (this.spoilerAngle / 60) * 40.0; 
@@ -35,41 +33,42 @@ export class FlightPhysics {
         this.airspeed += (currentThrust - spoilerDrag) * deltaTime;
         if (this.airspeed < 0) this.airspeed = 0;
 
-        // --- 2. STALL LOGIC (170 KTS) ---
+        // --- 2. THE 170KT STALL ---
         const stallSpeed = 170; 
-        // Controls die at 160kts
-        const airEffectiveness = Math.max(0, Math.min(1.0, (this.airspeed - 160) / 40));
+        const airEffectiveness = Math.max(0, Math.min(1.0, (this.airspeed - 150) / 40));
 
-        // FAST NOSE DROP
         let stallNoseDrop = 0;
         if (this.airspeed < stallSpeed && !isOnGround) {
-            // High multiplier for fast drop, but capped to prevent glitching
-            stallNoseDrop = Math.max(-150, (stallSpeed - this.airspeed) * -12.0); 
+            stallNoseDrop = (stallSpeed - this.airspeed) * -18.0; // Violent Drop
         }
 
-        // --- 3. STABLE ROTATION ---
-        const damping = 3.0;           
-        const responsiveness = 4.0;    
+        // --- 3. ROTATION (STRICTLY INDEPENDENT) ---
+        const damping = 4.0;           
+        const responsiveness = 5.0;    
 
-        let pIn = (controls.keys.ArrowUp ? -60 : (controls.keys.ArrowDown ? 60 : 0));
-        let rIn = (controls.keys.ArrowLeft ? -60 : (controls.keys.ArrowRight ? 60 : 0));
+        let pIn = (controls.keys.ArrowUp ? -70 : (controls.keys.ArrowDown ? 70 : 0));
+        let rIn = (controls.keys.ArrowLeft ? -70 : (controls.keys.ArrowRight ? 70 : 0));
+        let yIn = (controls.keys.KeyA ? -50 : (controls.keys.KeyD ? 50 : 0)); // YAW INPUT
 
         if (isOnGround) {
-            this.heading += (controls.keys.KeyA ? -1 : (controls.keys.KeyD ? 1 : 0)) * (this.airspeed / 15) * deltaTime;
-            this.pitch *= 0.8; 
-            this.roll *= 0.8;
+            // Nose wheel steering on ground
+            this.heading += (yIn / 20) * (this.airspeed / 10) * deltaTime;
+            this.pitch *= 0.5; 
+            this.roll *= 0.5;
             this.pitchVelocity = 0;
             this.rollVelocity = 0;
+            this.yawVelocity = 0;
         } else {
-            // Pitch: Combines your input with the stall drop
+            // PITCH: Inputs + Stall Drop
             this.pitchVelocity += ((pIn * airEffectiveness) + stallNoseDrop - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
-            // Roll: Only works if you have airspeed
+            // ROLL: Strictly Arrow Keys
             this.rollVelocity += ((rIn * airEffectiveness) - (this.rollVelocity * damping)) * deltaTime * responsiveness;
+            // YAW: Strictly A and D keys
+            this.yawVelocity += ((yIn * airEffectiveness) - (this.yawVelocity * damping)) * deltaTime * responsiveness;
             
             this.pitch += this.pitchVelocity * deltaTime;
             this.roll += this.rollVelocity * deltaTime;
-            // Heading only changes when banking
-            this.heading += (this.roll * 0.02) * (this.airspeed / 100);
+            this.heading += this.yawVelocity * deltaTime;
         }
     }
 
@@ -85,11 +84,10 @@ export class FlightPhysics {
         
         if (this.altitude <= this.groundHeight) {
             this.altitude = this.groundHeight;
-            this.vs = 0;
         } else {
-            // Gravity weight pull
-            const gravityPull = this.airspeed < 170 ? (170 - this.airspeed) * 0.8 : 0;
-            this.altitude += (vz - gravityPull) * frameTime;
+            // Force altitude loss if stalled
+            const sinkRate = this.airspeed < 170 ? (170 - this.airspeed) * 1.5 : 0;
+            this.altitude += (vz - sinkRate) * frameTime;
         }
 
         const vx = this.airspeed * Math.cos(p) * Math.cos(h);
