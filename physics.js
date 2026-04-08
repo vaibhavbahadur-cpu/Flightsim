@@ -24,40 +24,59 @@ export class FlightPhysics {
 
         const pRad = window.Cesium.Math.toRadians(this.pitch);
         const rRad = window.Cesium.Math.toRadians(this.roll);
+        const isOnGround = (this.altitude <= this.groundHeight + 1.5);
 
-        // --- 1. THRUST VS GRAVITY (The 50kt Fix) ---
-        const throttleInput = controls.throttle || 5;
+        // --- 1. THRUST, BRAKES & FRICTION ---
+        const throttleInput = controls.throttle || 0;
         const maxEngineAccel = 6.5; 
-        const currentThrust = (throttleInput / 9) * maxEngineAccel;
+        let currentThrust = (throttleInput / 9) * maxEngineAccel;
         
-        // Gravity Drag: Bleeds speed based on pitch sine
         const gravityDrag = Math.sin(pRad) * 9.8; 
-        this.airspeed += (currentThrust - gravityDrag) * deltaTime;
+        
+        // Add Ground Friction and Brakes
+        let totalDecel = gravityDrag;
+        if (isOnGround) {
+            totalDecel += 0.5; // Natural ground rolling resistance
+            if (controls.keys.Space) {
+                totalDecel += 8.0; // Heavy Wheel Braking
+            }
+        }
 
-        // Airspeed floor
-        if (this.airspeed < 5) this.airspeed = 5;
+        this.airspeed += (currentThrust - totalDecel) * deltaTime;
+        if (this.airspeed < 0) this.airspeed = 0; // Don't move backwards
 
         // --- 2. AERODYNAMICS & STALL ---
         const liftFactor = this.staller.calculateLiftFactor(this.airspeed, this.pitch, this.vs);
         this.isStalled = this.staller.isStalled;
 
-        // Elevator Washout: Lose 95% of control effectiveness in a stall
         const controlEfficiency = this.isStalled ? 0.05 : 1.0;
-        let stallNoseDrop = this.isStaller ? this.staller.getNoseDropTorque() : (this.isStalled ? -75.0 : 0.0);
+        let stallNoseDrop = this.isStalled ? -75.0 : 0.0;
         let stallRoll = this.isStalled ? (Math.random() - 0.5) * 45.0 : 0.0;
 
-        // --- 3. ROTATION PHYSICS ---
+        // --- 3. ROTATION PHYSICS (AIR & GROUND) ---
         const controlAuthority = 35.0; 
         const damping = 1.8;           
         const responsiveness = 2.5;    
 
         let pIn = (controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0)) * controlEfficiency;
         let rIn = (controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0)) * controlEfficiency;
-        let yIn = (controls.keys.KeyA ? -controlAuthority * 0.5 : (controls.keys.KeyD ? controlAuthority * 0.5 : 0)) * controlEfficiency;
+        
+        // RUDDER (A/D): Handle Air Yaw and Ground Steering
+        let yIn = (controls.keys.KeyA ? -controlAuthority : (controls.keys.KeyD ? controlAuthority : 0));
+
+        if (isOnGround) {
+            // Nose-wheel steering: Turn heading directly based on speed when taxiing
+            const taxiSteerEffect = (this.airspeed / 20); // More steering at moderate speeds
+            this.heading += yIn * taxiSteerEffect * deltaTime;
+            this.yawVelocity = 0; // Disable yaw momentum while wheels are locked to ground
+        } else {
+            // Flight Yaw: Standard aerodynamic rudder
+            yIn *= (controlEfficiency * 0.5); 
+            this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
+        }
 
         this.pitchVelocity += (pIn + stallNoseDrop - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
         this.rollVelocity += (rIn + stallRoll - (this.rollVelocity * damping)) * deltaTime * responsiveness;
-        this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
 
         this.pitch += (this.pitchVelocity * Math.cos(rRad)) * deltaTime;
         this.heading += (this.pitchVelocity * Math.sin(rRad)) * deltaTime;
@@ -85,7 +104,7 @@ export class FlightPhysics {
         
         if (this.altitude <= this.groundHeight && vz < 0) {
             this.altitude = this.groundHeight;
-            this.pitch = 0;
+            this.pitch = Math.max(0, this.pitch); // Don't let nose bury in ground
             this.pitchVelocity = 0;
             this.vs = 0;
         } else {
