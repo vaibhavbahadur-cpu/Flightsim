@@ -5,7 +5,6 @@ export class Boeing748 {
         this.viewer = viewer;
         this.modelUri = 'https://raw.githack.com/vaibhavbahadur-cpu/7478/main/Boeing%20747-8I.glb';
         this.aircraftEntity = null;
-        // Initialize the new spoiler system
         this.spoilerSystem = new SpoilerModule(viewer);
     }
 
@@ -24,10 +23,7 @@ export class Boeing748 {
             }
         });
 
-        // Set tracking but allow mouse interaction
         this.viewer.trackedEntity = this.aircraftEntity;
-
-        // Setup the spoilers to bond with the aircraft entity
         this.spoilerSystem.setup(this.aircraftEntity);
     }
 
@@ -42,11 +38,10 @@ export class Boeing748 {
         );
         const orientation = Cesium.Transforms.headingPitchRollQuaternion(position, hpr);
 
-        // Directly updating properties preserves the camera track
         this.aircraftEntity.position = position;
         this.aircraftEntity.orientation = orientation;
 
-        // Update spoilers: stays bonded to position/orientation and checks B key
+        // Pass the B key state to the spoiler system
         this.spoilerSystem.update(
             this.aircraftEntity.position, 
             this.aircraftEntity.orientation, 
