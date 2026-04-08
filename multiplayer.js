@@ -2,80 +2,63 @@ export class FlightMultiplayer {
     constructor(viewer, nav, callsign) {
         this.viewer = viewer;
         this.nav = nav;
-        // Your unique ID (random or chosen)
-        this.id = callsign.replace(/\s+/g, '-').toLowerCase() + "-" + Math.floor(Math.random() * 1000);
-        this.callsign = callsign;
+        // Your unique random ID
+        this.id = "pilot-" + Math.random().toString(36).substr(2, 5);
+        this.callsign = callsign || "Unknown";
         this.others = {};
         this.connections = {};
 
-        // 1. Create the UI HUD
+        // HUD for debugging
         this.statusDiv = document.createElement('div');
-        this.statusDiv.style.cssText = "position:absolute; top:10px; right:10px; padding:10px; background:rgba(0,0,0,0.8); color:#0f0; font-family:monospace; z-index:10005; border:1px solid #0f0; border-radius:5px;";
+        this.statusDiv.style.cssText = "position:absolute; top:10px; right:10px; padding:15px; background:rgba(0,0,0,0.9); color:#0f0; font-family:monospace; z-index:10005; border:2px solid #0f0; border-radius:10px;";
         document.body.appendChild(this.statusDiv);
 
-        // 2. Start PeerJS
-        this.peer = new Peer(this.id);
         this.init();
     }
 
     init() {
-        this.peer.on('open', (myId) => {
-            this.statusDiv.innerHTML = `CALLSIGN: ${this.callsign}<br>RADAR: SCANNING...`;
-            
-            // DISCOVERY LOGIC:
-            // We "broadcast" our ID to a public list so others can find us.
-            // Since PeerJS doesn't have a built-in "Lobby List", 
-            // we try to connect to a few common 'slots' (slot-1, slot-2, etc.)
-            for (let i = 1; i <= 5; i++) {
-                this.tryConnect(`b748-slot-${i}`);
-            }
+        // We use a FIXED ID for the lobby so random names can find each other
+        this.peer = new Peer('b748-global-lobby-' + Math.floor(Math.random() * 5)); 
 
-            // Also, we try to BECOME a slot if it's empty
-            this.occupySlot();
+        this.peer.on('open', (id) => {
+            this.statusDiv.innerHTML = `CALLSIGN: ${this.callsign}<br>STATUS: SCANNING SKIES...`;
+            
+            // Search for the 5 possible lobby slots
+            for (let i = 0; i < 5; i++) {
+                const target = 'b748-global-lobby-' + i;
+                if (target !== id) {
+                    this.connectTo(target);
+                }
+            }
         });
 
         this.peer.on('connection', (conn) => {
             this.setupConnection(conn);
         });
+
+        this.peer.on('error', (err) => {
+            console.log("Peer error (usually safe):", err.type);
+        });
     }
 
-    async occupySlot() {
-        // Try to take a slot so others can find us easily
-        for (let i = 1; i <= 10; i++) {
-            let slotPeer = new Peer(`b748-slot-${i}`);
-            slotPeer.on('open', () => {
-                console.log(`Taking Slot ${i} as a beacon.`);
-                slotPeer.on('connection', (conn) => {
-                    // When someone connects to our slot, we tell them our REAL random ID
-                    conn.on('open', () => {
-                        conn.send({ type: 'HANDSHAKE', realId: this.id });
-                    });
-                });
-            });
-            slotPeer.on('error', () => { /* Slot taken, try next */ });
-        }
-    }
-
-    tryConnect(targetId) {
-        if (targetId === this.id) return;
+    connectTo(targetId) {
         const conn = this.peer.connect(targetId);
         this.setupConnection(conn);
     }
 
     setupConnection(conn) {
-        conn.on('data', (data) => {
-            // If we hit a slot beacon, connect to their real random name
-            if (data.type === 'HANDSHAKE') {
-                this.tryConnect(data.realId);
-                return;
-            }
+        conn.on('open', () => {
+            this.connections[conn.peer] = conn;
+            this.statusDiv.innerHTML = `CALLSIGN: ${this.callsign}<br>STATUS: <span style="color:#0ff">CONNECTED</span>`;
+        });
 
-            // Otherwise, it's flight data!
+        conn.on('data', (data) => {
             this.updateEntity(data);
             this.nav.updateRemotePlayer(data.id, data.pos.lat, data.pos.lon, data.callsign, data.pos.alt);
-            
-            this.connections[conn.peer] = conn;
-            this.statusDiv.innerHTML = `CALLSIGN: ${this.callsign}<br>PILOTS NEARBY: ${Object.keys(this.others).length}`;
+        });
+
+        conn.on('close', () => {
+            this.removePlayer(conn.peer);
         });
     }
 
@@ -85,14 +68,16 @@ export class FlightMultiplayer {
                 name: data.callsign,
                 model: { 
                     uri: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/CesiumMilkTruck/glTF/CesiumMilkTruck.glb', 
-                    scale: 20, 
-                    minimumPixelSize: 80 
+                    scale: 30, // BIGGER so you can't miss it
+                    minimumPixelSize: 150 
                 },
                 label: { 
                     text: data.callsign.toUpperCase(), 
-                    font: 'bold 16pt monospace', 
+                    font: 'bold 24pt monospace', 
                     fillColor: Cesium.Color.YELLOW,
-                    pixelOffset: new Cesium.Cartesian2(0, -60),
+                    outlineColor: Cesium.Color.BLACK,
+                    outlineWidth: 4,
+                    pixelOffset: new Cesium.Cartesian2(0, -100),
                     disableDepthTestDistance: Number.POSITIVE_INFINITY 
                 }
             });
@@ -104,7 +89,7 @@ export class FlightMultiplayer {
     }
 
     send(lat, lon, alt, h, p, r) {
-        const payload = { id: this.id, callsign: this.callsign, pos: { lat, lon, alt }, hpr: { h, p, r } };
+        const payload = { id: this.peer.id, callsign: this.callsign, pos: { lat, lon, alt }, hpr: { h, p, r } };
         for (let id in this.connections) {
             if (this.connections[id].open) {
                 this.connections[id].send(payload);
