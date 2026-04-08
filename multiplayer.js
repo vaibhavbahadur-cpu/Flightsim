@@ -6,7 +6,7 @@ export class FlightMultiplayer {
         this.others = {};
         this.connections = {};
 
-        // 1. Initialize Peer with your callsign
+        // Use a public PeerJS server
         this.peer = new Peer(this.callsign);
 
         this.init();
@@ -15,65 +15,69 @@ export class FlightMultiplayer {
     init() {
         this.peer.on('open', (id) => {
             console.log('Online as: ' + id);
-            // AUTO-DISCOVERY: Try to find a partner if you are pilot-2
-            if (this.callsign.includes('2')) {
-                this.connectTo('pilot-1');
-            } else if (this.callsign.includes('1')) {
-                this.connectTo('pilot-2');
+            
+            // If we are pilot-2, keep hunting for pilot-1
+            if (this.callsign === 'pilot-2') {
+                setInterval(() => {
+                    if (!this.connections['pilot-1']) {
+                        this.connectTo('pilot-1');
+                    }
+                }, 3000);
             }
         });
 
-        // Handle incoming connections
+        // This triggers when someone ELSE connects to US
         this.peer.on('connection', (conn) => {
+            console.log("Inbound connection from: " + conn.peer);
             this.setupConnection(conn);
+        });
+
+        this.peer.on('error', (err) => {
+            console.warn("PeerJS Error:", err.type);
         });
     }
 
     connectTo(targetId) {
-        console.log("Attempting to find " + targetId + "...");
         const conn = this.peer.connect(targetId);
         this.setupConnection(conn);
     }
 
     setupConnection(conn) {
         conn.on('open', () => {
-            console.log("Connected to: " + conn.peer);
+            console.log("Data channel open with: " + conn.peer);
             this.connections[conn.peer] = conn;
         });
 
         conn.on('data', (data) => {
             this.updateEntity(data);
-            // Update the Nav Map Radar
-            this.nav.updateRemotePlayer(
-                data.id, 
-                data.pos.lat, 
-                data.pos.lon, 
-                data.callsign, 
-                data.pos.alt
-            );
+            this.nav.updateRemotePlayer(data.id, data.pos.lat, data.pos.lon, data.callsign, data.pos.alt);
         });
 
         conn.on('close', () => this.removePlayer(conn.peer));
-        conn.on('error', () => this.removePlayer(conn.peer));
     }
 
     updateEntity(data) {
         if (!this.others[data.id]) {
+            // Create the visible plane for the other pilot
             this.others[data.id] = this.viewer.entities.add({
                 name: data.callsign,
                 model: { 
                     uri: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/CesiumMilkTruck/glTF/CesiumMilkTruck.glb', 
-                    scale: 10 
+                    scale: 15,
+                    minimumPixelSize: 100 // Makes it visible from far away
                 },
                 label: { 
                     text: data.callsign, 
-                    font: '14pt monospace', 
+                    font: 'bold 16pt monospace', 
                     fillColor: Cesium.Color.YELLOW,
-                    outlineWidth: 2,
-                    pixelOffset: new Cesium.Cartesian2(0, -60)
+                    outlineColor: Cesium.Color.BLACK,
+                    outlineWidth: 3,
+                    pixelOffset: new Cesium.Cartesian2(0, -70),
+                    eyeOffset: new Cesium.Cartesian3(0, 0, -10)
                 }
             });
         }
+        
         const pos = Cesium.Cartesian3.fromDegrees(data.pos.lon, data.pos.lat, data.pos.alt);
         this.others[data.id].position = pos;
         
@@ -91,6 +95,7 @@ export class FlightMultiplayer {
             delete this.others[id];
         }
         this.nav.removeRemotePlayer(id);
+        delete this.connections[id];
     }
 
     send(lat, lon, alt, h, p, r) {
