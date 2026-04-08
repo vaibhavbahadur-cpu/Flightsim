@@ -1,8 +1,12 @@
+import { SpoilerModule } from './spoiler.js';
+
 export class Boeing748 {
     constructor(viewer) {
         this.viewer = viewer;
         this.modelUri = 'https://raw.githack.com/vaibhavbahadur-cpu/7478/main/Boeing%20747-8I.glb';
         this.aircraftEntity = null;
+        // Initialize the new spoiler system
+        this.spoilerSystem = new SpoilerModule(viewer);
     }
 
     spawn(lon, lat, alt) {
@@ -22,9 +26,12 @@ export class Boeing748 {
 
         // Set tracking but allow mouse interaction
         this.viewer.trackedEntity = this.aircraftEntity;
+
+        // Setup the spoilers to bond with the aircraft entity
+        this.spoilerSystem.setup(this.aircraftEntity);
     }
 
-    update(data) {
+    update(data, controls) {
         if (!this.aircraftEntity) return;
 
         const position = Cesium.Cartesian3.fromDegrees(data.longitude, data.latitude, data.altitude);
@@ -38,5 +45,12 @@ export class Boeing748 {
         // Directly updating properties preserves the camera track
         this.aircraftEntity.position = position;
         this.aircraftEntity.orientation = orientation;
+
+        // Update spoilers: stays bonded to position/orientation and checks B key
+        this.spoilerSystem.update(
+            this.aircraftEntity.position, 
+            this.aircraftEntity.orientation, 
+            controls.keys.KeyB
+        );
     }
 }
