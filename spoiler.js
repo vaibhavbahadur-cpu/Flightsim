@@ -1,11 +1,11 @@
 export class SpoilerModule {
     constructor(viewer) {
         this.viewer = viewer;
-        this.spoilerUri = 'https://github.com/vaibhavbahadur-cpu/7478i2/raw/refs/heads/main/Fantastic%20Bojo-Migelo.glb';
+        // Using GitHack to ensure the GLB loads correctly in the browser
+        this.spoilerUri = 'https://raw.githack.com/vaibhavbahadur-cpu/7478i2/main/Fantastic%20Bojo-Migelo.glb';
         this.spoilerEntity = null;
     }
 
-    // This creates the spoilers in the world
     setup(parentEntity) {
         this.spoilerEntity = this.viewer.entities.add({
             name: '747_Spoilers',
@@ -14,20 +14,24 @@ export class SpoilerModule {
             model: {
                 uri: this.spoilerUri,
                 minimumPixelSize: 128,
-                show: false // Hidden by default
+                show: false 
             }
         });
     }
 
-    // This keeps the spoilers glued to the plane and checks for the B key
     update(parentPosition, parentOrientation, isBraking) {
         if (!this.spoilerEntity) return;
 
-        // Perfect bond: copy the plane's movements exactly
-        this.spoilerEntity.position = parentPosition;
+        // OFFSET LOGIC: This lifts the spoilers 0.5 meters UP from the plane's center
+        // so they don't disappear inside the 3D wing model.
+        const modelMatrix = Cesium.Transforms.eastNorthUpToFixedFrame(parentPosition);
+        const offset = new Cesium.Cartesian3(0, 0, 0.5); 
+        const finalPos = Cesium.Matrix4.multiplyByPoint(modelMatrix, offset, new Cesium.Cartesian3());
+
+        this.spoilerEntity.position = finalPos;
         this.spoilerEntity.orientation = parentOrientation;
 
-        // Toggle visibility based on the B key
+        // Toggle visibility with the B key
         this.spoilerEntity.model.show = isBraking;
     }
 }
