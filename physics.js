@@ -5,7 +5,7 @@ export class FlightPhysics {
         this.latitude = lat;
         this.longitude = lon;
         this.altitude = alt;
-        this.airspeed = 130; 
+        this.airspeed = 250; // Start at cruise speed
         this.heading = 170;  
         this.pitch = 0;      
         this.roll = 0;       
@@ -14,7 +14,6 @@ export class FlightPhysics {
         this.rollVelocity = 0;
         this.yawVelocity = 0;
         this.vs = 0;
-        this.isStalled = false;
         this.spoilerAngle = 0; 
         this.staller = new StallModule();
         this.lastUpdateTime = performance.now();
@@ -25,80 +24,80 @@ export class FlightPhysics {
 
         const pRad = window.Cesium.Math.toRadians(this.pitch);
         const rRad = window.Cesium.Math.toRadians(this.roll);
-        const isOnGround = (this.altitude <= this.groundHeight + 1.5);
+        const isOnGround = (this.altitude <= this.groundHeight + 2.0);
 
-        // --- SPOILER PIVOT LOGIC ---
-        const targetAngle = controls.keys.KeyB ? 60 : 0;
-        const pivotSpeed = 180; 
-        if (this.spoilerAngle < targetAngle) {
-            this.spoilerAngle = Math.min(targetAngle, this.spoilerAngle + pivotSpeed * deltaTime);
-        } else {
-            this.spoilerAngle = Math.max(targetAngle, this.spoilerAngle - pivotSpeed * deltaTime);
-        }
-
-        // --- THRUST & DRAG ---
+        // --- 1. SPEED & SPOILER DRAG ---
         const throttleInput = controls.throttle || 0;
-        const maxEngineAccel = 6.5; 
-        let currentThrust = (throttleInput / 9) * maxEngineAccel;
-        const gravityDrag = Math.sin(pRad) * 9.8; 
+        let currentThrust = (throttleInput / 9) * 8.0; 
         
-        // Massive Spoiler Drag for testing
-        let spoilerDrag = (this.spoilerAngle / 60) * 40.0; 
-        let totalDecel = gravityDrag + spoilerDrag;
+        // Spoiler Deployment
+        const targetSpoiler = controls.keys.KeyB ? 60 : 0;
+        this.spoilerAngle += (targetSpoiler - this.spoilerAngle) * 2.0 * deltaTime;
+        
+        let spoilerDrag = (this.spoilerAngle / 60) * 35.0; 
+        let gravityDrag = Math.sin(pRad) * 9.8;
 
-        if (isOnGround) {
-            totalDecel += 0.5; 
-            if (controls.keys.Space) totalDecel += 8.0; 
+        this.airspeed += (currentThrust - (gravityDrag + spoilerDrag)) * deltaTime;
+        if (this.airspeed < 0) this.airspeed = 0;
+
+        // --- 2. THE 170 KNOT STALL & CONTROL AUTHORITY ---
+        const stallSpeed = 170; 
+        
+        // Control effectiveness: 100% at 200kts+, 0% at 150kts
+        const airEffectiveness = Math.max(0, Math.min(1.0, (this.airspeed - 150) / 50));
+
+        // Automatic Nose Drop: Gravity wins when the wings stop flying
+        let stallNoseDrop = 0;
+        if (this.airspeed < stallSpeed && !isOnGround) {
+            // Stronger downward torque as speed drops below 170
+            stallNoseDrop = (stallSpeed - this.airspeed) * -2.8; 
         }
 
-        this.airspeed += (currentThrust - totalDecel) * deltaTime;
-        if (this.airspeed < 0) this.airspeed = 0; 
+        // --- 3. ROTATION PHYSICS ---
+        const damping = 2.2;           
+        const responsiveness = 3.0;    
 
-        // --- AERODYNAMICS ---
-        const liftFactor = this.staller.calculateLiftFactor(this.airspeed, this.pitch, this.vs);
-        this.isStalled = this.staller.isStalled;
-        const controlEfficiency = this.isStalled ? 0.05 : 1.0;
-
-        // --- ROTATION ---
-        const controlAuthority = 35.0; 
-        const damping = 1.8;           
-        const responsiveness = 2.5;    
-
-        let pIn = (controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0)) * controlEfficiency;
-        let rIn = (controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0)) * controlEfficiency;
-        let yIn = (controls.keys.KeyA ? -controlAuthority : (controls.keys.KeyD ? controlAuthority : 0));
+        let pIn = (controls.keys.ArrowUp ? -45 : (controls.keys.ArrowDown ? 45 : 0));
+        let rIn = (controls.keys.ArrowLeft ? -50 : (controls.keys.ArrowRight ? 50 : 0));
 
         if (isOnGround) {
-            this.heading += yIn * (this.airspeed / 20) * deltaTime;
-            this.yawVelocity = 0; 
-            this.pitch *= 0.9; 
-            this.roll *= 0.9;
+            // Taxi logic
+            this.heading += (controls.keys.KeyA ? -1 : (controls.keys.KeyD ? 1 : 0)) * (this.airspeed / 15) * deltaTime;
+            this.pitch *= 0.7; 
+            this.roll *= 0.7;
+            this.pitchVelocity = 0;
+            this.rollVelocity = 0;
         } else {
-            yIn *= (controlEfficiency * 0.5); 
-            this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
+            // Flight logic: Scale inputs by airEffectiveness
+            this.pitchVelocity += ((pIn * airEffectiveness) + stallNoseDrop - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
+            this.rollVelocity += ((rIn * airEffectiveness) - (this.rollVelocity * damping)) * deltaTime * responsiveness;
         }
-
-        this.pitchVelocity += (pIn - (this.pitchVelocity * damping)) * deltaTime * responsiveness;
-        this.rollVelocity += (rIn - (this.rollVelocity * damping)) * deltaTime * responsiveness;
 
         this.pitch += (this.pitchVelocity * Math.cos(rRad)) * deltaTime;
         this.heading += (this.pitchVelocity * Math.sin(rRad)) * deltaTime;
-        this.heading += (this.yawVelocity * Math.cos(rRad)) * deltaTime;
-        this.pitch -= (this.yawVelocity * Math.sin(rRad)) * deltaTime;
         this.roll += this.rollVelocity * deltaTime;
 
+        // --- 4. LIFT VS WEIGHT (QUADRATIC STALL) ---
         if (!isOnGround) {
-            const gravityWeight = (1.8 + (1 - Math.cos(rRad)) * 10);
-            const liftEffect = ((this.airspeed / 110) * 2.2 * Math.cos(rRad)) * liftFactor;
-            this.pitch -= gravityWeight * deltaTime;
-            this.pitch += liftEffect * deltaTime;
+            const weightForce = 22.0; 
+            // Lift formula: (Actual Speed / Stall Speed)^2
+            // At 170kts = 1.0 (Level flight). At 85kts = 0.25 (Falling).
+            const liftForce = Math.pow(this.airspeed / stallSpeed, 2) * weightForce;
+
+            this.pitch -= weightForce * deltaTime;
+            this.pitch += liftForce * deltaTime;
+
+            // Extra Sink Rate if stalled
+            if (this.airspeed < stallSpeed) {
+                this.vs -= (stallSpeed - this.airspeed) * 0.4 * deltaTime;
+            }
         }
     }
 
     update() {
         const now = performance.now();
         const deltaTime = (now - this.lastUpdateTime) / 1000;
-        const frameTime = deltaTime > 0 ? deltaTime : 0.016;
+        const frameTime = Math.min(deltaTime, 0.05);
         this.lastUpdateTime = now;
 
         const p = window.Cesium.Math.toRadians(this.pitch);
@@ -107,31 +106,24 @@ export class FlightPhysics {
         
         if (this.altitude <= this.groundHeight) {
             this.altitude = this.groundHeight;
-            if (vz < 0) {
-                this.vs = 0;
-                this.pitch = Math.max(0, this.pitch); 
-                this.pitchVelocity = 0;
-            }
+            if (vz < 0) this.vs = 0;
         } else {
-            this.altitude += vz * frameTime;
-            this.vs = vz;
+            this.altitude += (vz + (this.vs || 0)) * frameTime;
+            // Dampen the sink rate
+            this.vs *= 0.95; 
         }
 
         const vx = this.airspeed * Math.cos(p) * Math.cos(h);
         const vy = this.airspeed * Math.cos(p) * Math.sin(h);
         
-        const metersPerDegLat = 111000;
         const radLat = window.Cesium.Math.toRadians(this.latitude);
-        const metersPerDegLon = metersPerDegLat * Math.cos(radLat);
-
-        this.latitude += (vx * frameTime) / metersPerDegLat;
-        this.longitude += (vy * frameTime) / metersPerDegLon;
+        this.latitude += (vx * frameTime) / 111000;
+        this.longitude += (vy * frameTime) / (111000 * Math.cos(radLat));
 
         return {
             latitude: this.latitude, longitude: this.longitude, altitude: this.altitude,
             heading: this.heading, pitch: this.pitch, roll: this.roll,
-            airspeed: this.airspeed, vs: this.vs, groundHeight: this.groundHeight,
-            isStalled: this.isStalled, spoilerAngle: this.spoilerAngle 
+            airspeed: this.airspeed, vs: this.vs, spoilerAngle: this.spoilerAngle 
         };
     }
 }
