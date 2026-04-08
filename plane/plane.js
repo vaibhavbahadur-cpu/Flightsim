@@ -1,4 +1,4 @@
-import { SpoilerModule } from './spoiler.js';
+import { SpoilerModule } from '../spoiler.js';
 
 export class Boeing748 {
     constructor(viewer) {
