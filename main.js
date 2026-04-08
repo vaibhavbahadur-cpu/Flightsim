@@ -4,6 +4,7 @@ import { FlightCamera } from './camera.js';
 import { FlightPhysics } from './physics.js';
 import { FlightControls } from './controls.js';
 import { FlightTelemetry } from './telemetry.js';
+import { FlightNav } from './nav.js'; // IMPORT NAV
 
 const TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI2NzhkMDM2Zi0yOTIwLTQyOWEtYTYwYy1lY2IyYmNlMzNkZTYiLCJpZCI6NDEwODE3LCJpYXQiOjE3NzQ3OTc2NTB9.-Fwn3dLnJIdfvcJj2tiB7UHey2alHBtdRH8hCXcIqJY';
 
@@ -20,6 +21,25 @@ export async function startSimulation() {
     const telemetry = new FlightTelemetry();
     const physics = new FlightPhysics(30.19, -97.67, 1000); 
     
+    // INITIALIZE NAV SYSTEM
+    const nav = new FlightNav((lat, lon, altMeters, heading) => {
+        // This runs when you click 'SPAWN' in the Nav Menu
+        physics.latitude = lat;
+        physics.longitude = lon;
+        physics.altitude = altMeters;
+        physics.heading = heading;
+        
+        // Safety speed: If spawning high, start at 140 m/s to avoid instant stall
+        physics.airspeed = altMeters > 100 ? 140 : 0;
+        
+        // Reset rotational energy
+        physics.pitch = 0;
+        physics.roll = 0;
+        physics.pitchVelocity = 0;
+        physics.rollVelocity = 0;
+        physics.vs = 0;
+    });
+
     my747.spawn(physics.longitude, physics.latitude, physics.altitude);
 
     let cameraInitialized = false;
@@ -33,6 +53,7 @@ export async function startSimulation() {
 
             const deltaTime = (now - lastFrameTime) / 1000;
             lastFrameTime = now;
+            
             physics.applyInputs(controls, deltaTime);
             const data = physics.update();
             
