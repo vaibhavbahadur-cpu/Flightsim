@@ -7,7 +7,8 @@ export class FlightControls {
             ArrowRight: false,
             KeyA: false,
             KeyD: false,
-            Space: false // NEW: Braking key
+            KeyB: false, // NEW: Spoilers
+            Space: false 
         };
         this.throttle = 5;
 
