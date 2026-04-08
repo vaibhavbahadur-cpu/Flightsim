@@ -24,6 +24,8 @@ export class FlightPhysics {
 
         const pRad = window.Cesium.Math.toRadians(this.pitch);
         const rRad = window.Cesium.Math.toRadians(this.roll);
+        
+        // Check if we are on the ground (with a small buffer)
         const isOnGround = (this.altitude <= this.groundHeight + 1.5);
 
         // --- 1. THRUST, BRAKES & FRICTION ---
@@ -33,17 +35,16 @@ export class FlightPhysics {
         
         const gravityDrag = Math.sin(pRad) * 9.8; 
         
-        // Add Ground Friction and Brakes
         let totalDecel = gravityDrag;
         if (isOnGround) {
-            totalDecel += 0.5; // Natural ground rolling resistance
+            totalDecel += 0.5; // Natural rolling resistance
             if (controls.keys.Space) {
-                totalDecel += 8.0; // Heavy Wheel Braking
+                totalDecel += 8.0; // Heavy wheel braking force
             }
         }
 
         this.airspeed += (currentThrust - totalDecel) * deltaTime;
-        if (this.airspeed < 0) this.airspeed = 0; // Don't move backwards
+        if (this.airspeed < 0) this.airspeed = 0; 
 
         // --- 2. AERODYNAMICS & STALL ---
         const liftFactor = this.staller.calculateLiftFactor(this.airspeed, this.pitch, this.vs);
@@ -53,7 +54,7 @@ export class FlightPhysics {
         let stallNoseDrop = this.isStalled ? -75.0 : 0.0;
         let stallRoll = this.isStalled ? (Math.random() - 0.5) * 45.0 : 0.0;
 
-        // --- 3. ROTATION PHYSICS (AIR & GROUND) ---
+        // --- 3. ROTATION PHYSICS ---
         const controlAuthority = 35.0; 
         const damping = 1.8;           
         const responsiveness = 2.5;    
@@ -61,16 +62,22 @@ export class FlightPhysics {
         let pIn = (controls.keys.ArrowUp ? -controlAuthority : (controls.keys.ArrowDown ? controlAuthority : 0)) * controlEfficiency;
         let rIn = (controls.keys.ArrowLeft ? -controlAuthority * 1.5 : (controls.keys.ArrowRight ? controlAuthority * 1.5 : 0)) * controlEfficiency;
         
-        // RUDDER (A/D): Handle Air Yaw and Ground Steering
+        // Rudder (A/D)
         let yIn = (controls.keys.KeyA ? -controlAuthority : (controls.keys.KeyD ? controlAuthority : 0));
 
         if (isOnGround) {
-            // Nose-wheel steering: Turn heading directly based on speed when taxiing
-            const taxiSteerEffect = (this.airspeed / 20); // More steering at moderate speeds
+            // Nose-wheel steering
+            const taxiSteerEffect = (this.airspeed / 20); 
             this.heading += yIn * taxiSteerEffect * deltaTime;
-            this.yawVelocity = 0; // Disable yaw momentum while wheels are locked to ground
+            this.yawVelocity = 0; 
+            
+            // GROUND LEVELING: Stop the nose dive/tilt while on tarmac
+            this.pitch *= 0.9; 
+            this.roll *= 0.9;
+            this.pitchVelocity = 0;
+            this.rollVelocity = 0;
         } else {
-            // Flight Yaw: Standard aerodynamic rudder
+            // Flight Yaw
             yIn *= (controlEfficiency * 0.5); 
             this.yawVelocity += (yIn - (this.yawVelocity * damping)) * deltaTime * responsiveness;
         }
@@ -84,12 +91,18 @@ export class FlightPhysics {
         this.pitch -= (this.yawVelocity * Math.sin(rRad)) * deltaTime;
         this.roll += this.rollVelocity * deltaTime;
 
-        // --- 4. LIFT VS WEIGHT ---
-        const gravityWeight = (1.8 + (1 - Math.cos(rRad)) * 10);
-        const liftEffect = ((this.airspeed / 110) * 2.2 * Math.cos(rRad)) * liftFactor;
+        // --- 4. LIFT VS WEIGHT (Applied only in air) ---
+        if (!isOnGround) {
+            const gravityWeight = (1.8 + (1 - Math.cos(rRad)) * 10);
+            const liftEffect = ((this.airspeed / 110) * 2.2 * Math.cos(rRad)) * liftFactor;
 
-        this.pitch -= gravityWeight * deltaTime;
-        this.pitch += liftEffect * deltaTime;
+            this.pitch -= gravityWeight * deltaTime;
+            this.pitch += liftEffect * deltaTime;
+        } else {
+            // Keep pitch/roll at absolute zero if very close to level on ground
+            if (Math.abs(this.pitch) < 0.1) this.pitch = 0;
+            if (Math.abs(this.roll) < 0.1) this.roll = 0;
+        }
     }
 
     update() {
@@ -102,11 +115,13 @@ export class FlightPhysics {
         const h = window.Cesium.Math.toRadians(this.heading);
         const vz = this.airspeed * Math.sin(p);
         
-        if (this.altitude <= this.groundHeight && vz < 0) {
+        if (this.altitude <= this.groundHeight) {
             this.altitude = this.groundHeight;
-            this.pitch = Math.max(0, this.pitch); // Don't let nose bury in ground
-            this.pitchVelocity = 0;
-            this.vs = 0;
+            if (vz < 0) {
+                this.vs = 0;
+                this.pitch = Math.max(0, this.pitch); 
+                this.pitchVelocity = 0;
+            }
         } else {
             this.altitude += vz * frameTime;
             this.vs = vz;
